@@ -81,6 +81,8 @@ export interface AppState {
   notifications: Record<string, boolean>;
   practice: Record<string, number>;
   uploadedFileName: string | null;
+  /** Profile questions already answered here, so a real answer is not asked for twice. */
+  answered?: Record<string, boolean>;
 }
 
 const KEY = "cq-state-v5";

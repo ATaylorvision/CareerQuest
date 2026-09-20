@@ -4,14 +4,16 @@ import { toast } from "sonner";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
 import {
   ArrowRight,
-  BadgeCheck,
+  Bookmark,
   Briefcase,
   CalendarClock,
   CalendarRange,
   Clock,
   Flame,
+  FileDown,
   Languages,
   MessageCircle,
+  Printer,
   Send,
   Sparkles,
   Sprout,
@@ -24,10 +26,12 @@ import { LegitBadgeView, Pill, SampleTag } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { useStore } from "@/store/AppStore";
+import { ProfileQuestions } from "@/components/ProfileQuestions";
+import { buildResume, downloadText, printResume, resumeToText } from "@/lib/resumeBuild";
 import { buildPlan, INTENSITY_META } from "@/data/plan";
 import { buildLivePlan } from "@/lib/livePlan";
 import { jobById, JOBS } from "@/data/jobs";
-import { gapAggregate, proofScore, streakOf, visibleJobs } from "@/lib/selectors";
+import { gapAggregate, streakOf, visibleJobs } from "@/lib/selectors";
 import { daysUntilWeekday, fmtDate, diffDays, startOfToday } from "@/lib/date";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
@@ -101,7 +105,8 @@ export default function Dashboard() {
   const plan = live ? buildLivePlan(state) : demoPlan;
   const doneCount = plan.filter((p) => state.planDone[p.id]).length;
   const allDone = plan.length > 0 && doneCount === plan.length;
-  const proof = proofScore(state.applications);
+
+  const baseDoc = useMemo(() => buildResume([], {}, { contact: state.resume.contact }), [state.resume.contact]);
 
   const weekStart = startOfToday();
   weekStart.setDate(weekStart.getDate() - 6);
@@ -112,7 +117,8 @@ export default function Dashboard() {
     const responsesThisWeek = state.applications.flatMap((a) => a.events.filter((e) => !e.future && RESPONSE_TYPES.has(e.type) && diffDays(e.at) <= 6)).length;
     const responded = apps.filter((a) => a.events.some((e) => !e.future && RESPONSE_TYPES.has(e.type))).length;
     const rate = apps.length ? Math.round((responded / apps.length) * 100) : 0;
-    return { sentThisWeek, responsesThisWeek, total: apps.length, responded, rate };
+    const saved = state.applications.filter((a) => !a.receipt?.submittedAt).length;
+    return { sentThisWeek, responsesThisWeek, total: apps.length, responded, rate, saved };
   }, [state.applications]);
 
   const weeks = useMemo(() => {
@@ -169,13 +175,48 @@ export default function Dashboard() {
         }
       />
 
-      {/* The numbers first, so the state of the search is readable without scrolling. */}
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+  <Card className="mb-5">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-4">
+            <div className={cn("flex h-14 w-14 items-center justify-center rounded-2xl", streak.broken ? "bg-muted text-muted-foreground" : "bg-warning-soft text-warning")}>
+              <Flame className="h-7 w-7" />
+            </div>
+            <div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="num font-display text-4xl font-semibold">{streak.current}</span>
+                <span className="text-sm text-muted-foreground">day streak</span>
+              </div>
+              <div className="text-xs text-muted-foreground">Best so far: {streak.best} days</div>
+            </div>
+          </div>
+          <div className="flex-1 sm:pl-4">
+            <div className="mb-2 text-xs text-muted-foreground">Last 3 weeks. A filled dot means at least one action.</div>
+            <div className="flex flex-wrap gap-1.5" aria-label="Activity over the last 21 days">
+              {[...state.activity].reverse().map((d, i, arr) => {
+                const isToday = i === arr.length - 1;
+                const on = d && !(state.streakBrokenDemo && i >= arr.length - 3);
+                return (
+                  <span
+                    key={i}
+                    title={isToday ? "Today" : `${arr.length - 1 - i} days ago`}
+                    className={cn("h-5 w-5 rounded-md transition-colors sm:h-6 sm:w-6", on ? "bg-success" : "bg-muted", isToday && "ring-2 ring-primary ring-offset-2 ring-offset-card")}
+                  />
+                );
+              })}
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              {streak.broken ? "Streaks restart the moment you do one small thing. No penalty, no guilt." : "Consistency beats intensity. Missing a day never erases what you have done."}
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Then the numbers, so the state of the search is readable without scrolling. */}
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile icon={Briefcase} label="Open matches" value={open.length} sub={`${newMatches.length} new since yesterday`} />
         <Tile icon={Send} label="Applications" value={stats.total} sub={`${stats.sentThisWeek} sent this week`} />
         <Tile icon={TrendingUp} label="Response rate" value={`${stats.rate}%`} sub={`${stats.responded} of ${stats.total} replied`} />
-        <Tile icon={BadgeCheck} label="Proof Score" value={`${proof.pct}%`} sub={`${proof.verified} of ${proof.total} verified`} tone="success" />
-        <Tile icon={Flame} label="Streak" value={streak.current} sub={`Best so far: ${streak.best} days`} tone={streak.broken ? "warning" : undefined} />
+        <Tile icon={Bookmark} label="Saved, not sent" value={stats.saved} sub="Waiting on you" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
@@ -314,45 +355,45 @@ export default function Dashboard() {
             </Card>
           )}
 
-          <Card>
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-4">
-                <div className={cn("flex h-14 w-14 items-center justify-center rounded-2xl", streak.broken ? "bg-muted text-muted-foreground" : "bg-warning-soft text-warning")}>
-                  <Flame className="h-7 w-7" />
-                </div>
-                <div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="num font-display text-4xl font-semibold">{streak.current}</span>
-                    <span className="text-sm text-muted-foreground">day streak</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">Best so far: {streak.best} days</div>
-                </div>
-              </div>
-              <div className="flex-1 sm:pl-4">
-                <div className="mb-2 text-xs text-muted-foreground">Last 3 weeks. A filled dot means at least one action.</div>
-                <div className="flex flex-wrap gap-1.5" aria-label="Activity over the last 21 days">
-                  {[...state.activity].reverse().map((d, i, arr) => {
-                    const isToday = i === arr.length - 1;
-                    const on = d && !(state.streakBrokenDemo && i >= arr.length - 3);
-                    return (
-                      <span
-                        key={i}
-                        title={isToday ? "Today" : `${arr.length - 1 - i} days ago`}
-                        className={cn("h-5 w-5 rounded-md transition-colors sm:h-6 sm:w-6", on ? "bg-success" : "bg-muted", isToday && "ring-2 ring-primary ring-offset-2 ring-offset-card")}
-                      />
-                    );
-                  })}
-                </div>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  {streak.broken ? "Streaks restart the moment you do one small thing. No penalty, no guilt." : "Consistency beats intensity. Missing a day never erases what you have done."}
-                </p>
-              </div>
-            </div>
-          </Card>
         </div>
 
         {/* Right rail */}
         <div className="space-y-6">
+          <ProfileQuestions />
+
+          {/* Your resume, without going anywhere first. */}
+          <Card>
+            <SectionTitle icon={FileDown} sub="Plain headings, real text, no tables. The version screening software reads cleanly.">
+              Your resume, ATS ready
+            </SectionTitle>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!printResume(baseDoc, `${baseDoc.name.replace(/\s+/g, "_")}_Resume`, state.resume.templateId, state.profile.headline))
+                    toast.error("Your browser blocked the print window. Allow pop ups and try again.");
+                }}
+              >
+                <Printer /> Download PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  downloadText(`${baseDoc.name.replace(/\s+/g, "_")}_Resume.txt`, resumeToText(baseDoc));
+                  toast.success("Plain text resume downloaded");
+                }}
+              >
+                <FileDown /> Plain text
+              </Button>
+              <Button asChild size="sm" variant="ghost">
+                <Link to="/app/studio">
+                  Tailor it for a job <ArrowRight />
+                </Link>
+              </Button>
+            </div>
+          </Card>
+
           <Card>
             <SectionTitle icon={CalendarClock}>Coming up</SectionTitle>
             <ul className="space-y-3">
@@ -444,12 +485,6 @@ export default function Dashboard() {
               <li className="flex justify-between gap-3">
                 <span className="text-muted-foreground">Responses</span>
                 <span className="num font-medium">{stats.responsesThisWeek}</span>
-              </li>
-              <li className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Proof Score</span>
-                <Pill size="xs" tone="success">
-                  {proof.pct}% verified
-                </Pill>
               </li>
               <li className="flex justify-between gap-3">
                 <span className="text-muted-foreground">Networking notes sent</span>
