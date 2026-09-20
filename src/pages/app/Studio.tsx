@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRight, CheckCheck, Download, FileDown, Languages, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
@@ -49,6 +49,19 @@ export default function Studio() {
   useEffect(() => {
     if (state.resume.jobId !== job.id) update((s) => void (s.resume.jobId = job.id));
   }, [job.id, state.resume.jobId, update]);
+
+  // Arriving from setup with the free tailored resume already claimed: run it
+  // once, on its own, so the page is working before they have to ask.
+  const autoTailor = params.get("tailor") === "1";
+  const kicked = useRef(false);
+  useEffect(() => {
+    if (!autoTailor || kicked.current) return;
+    kicked.current = true;
+    setParams({ job: job.id }, { replace: true });
+    setDoc("resume");
+    if (!liveChanges[job.id] && !analyzed.includes(job.id)) void startTailor();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoTailor]);
 
   const isAnalyzed = live ? !!liveChanges[job.id] : analyzed.includes(job.id);
   const freeLeft = FREE_LIMITS.tailoredResumes - state.usage.tailoredResumes;

@@ -33,17 +33,21 @@ export function ResumeDocument({
 
   return (
     <div className="mx-auto max-w-[720px] rounded-lg border bg-white p-6 font-serif text-[13px] leading-relaxed text-neutral-900 shadow-card sm:p-10">
-      <EditableText as="h2" value={r.name} label="Your name" onCommit={(v) => onContactEdit("name", v)} className="block text-2xl font-semibold tracking-wide" />
+      <EditableText as="h2" value={r.name} label="Your name" placeholder="Your name" onCommit={(v) => onContactEdit("name", v)} className="block text-2xl font-semibold tracking-wide" />
       <div className="mt-1 text-neutral-600">
-        <EditableText value={r.location} label="Your city and state" onCommit={(v) => onContactEdit("location", v)} />
-        {" | "}
-        <EditableText value={r.phone} label="Your phone number" onCommit={(v) => onContactEdit("phone", v)} />
-        {" | "}
-        <EditableText value={r.email} label="Your email address" onCommit={(v) => onContactEdit("email", v)} />
+        <EditableText value={r.location} label="Your city and state" placeholder="City, State" onCommit={(v) => onContactEdit("location", v)} />
+        <span className="px-1.5 text-neutral-400" aria-hidden>
+          |
+        </span>
+        <EditableText value={r.phone} label="Your phone number" placeholder="Phone" onCommit={(v) => onContactEdit("phone", v)} />
+        <span className="px-1.5 text-neutral-400" aria-hidden>
+          |
+        </span>
+        <EditableText value={r.email} label="Your email address" placeholder="Email" onCommit={(v) => onContactEdit("email", v)} />
       </div>
 
       <H>SUMMARY</H>
-      <EditableText as="p" multiline value={r.summary} label="Summary" onCommit={(v) => onEdit("summary", v)} className={cn("block", marks("summary"))} />
+      <EditableText as="p" multiline value={r.summary} label="Summary" placeholder="A sentence or two on the work you have done" onCommit={(v) => onEdit("summary", v)} className={cn("block", marks("summary"))} />
 
       <H>EXPERIENCE</H>
       {r.roles.map((role) => (
@@ -73,8 +77,8 @@ export function ResumeDocument({
       ))}
 
       <H>EDUCATION</H>
-      <EditableText as="p" value={r.education.join(" | ")} label="Education" onCommit={(v) => onEdit("education", v)} className={cn("block", marks("education"))} />
-      {!r.certsOwnSection && (
+      <EditableText as="p" value={r.education.join(" | ")} label="Education" placeholder="School or program, separated by |" onCommit={(v) => onEdit("education", v)} className={cn("block", marks("education"))} />
+      {!r.certsOwnSection && r.certifications.length > 0 && (
         <EditableText as="p" value={r.certifications.join(" | ")} label="Certifications" onCommit={(v) => onEdit("certifications", v)} className={cn("block", marks("certifications"))} />
       )}
       {r.certsOwnSection && (
@@ -85,7 +89,7 @@ export function ResumeDocument({
       )}
 
       <H>SKILLS</H>
-      <EditableText as="p" multiline value={r.skills.join(", ")} label="Skills" onCommit={(v) => onEdit("skills", v)} className={cn("block", marks("skills"))} />
+      <EditableText as="p" multiline value={r.skills.join(", ")} label="Skills" placeholder="Tools and skills, separated by commas" onCommit={(v) => onEdit("skills", v)} className={cn("block", marks("skills"))} />
     </div>
   );
 }

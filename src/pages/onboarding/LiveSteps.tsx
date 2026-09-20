@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ArrowRight, Check, Loader2, RefreshCcw, Rocket, Search, Sparkles } from "lucide-react";
 import { JobCard } from "@/components/JobCard";
 import { LegitBadgeView } from "@/components/status";
@@ -139,6 +140,11 @@ const ORDER: Progress["stage"][] = ["search", "score", "detail", "done"];
 
 export function LiveStepResults({ headingRef, onFinish }: { headingRef: HRef; onFinish: () => void }) {
   const { state, update } = useStore();
+  const nav = useNavigate();
+  const onTailor = (id: string) => {
+    update((s) => void (s.onboarded = true));
+    nav(`/app/studio?job=${id}&tailor=1`);
+  };
   const { flushProfile } = useLive();
   const [progress, setProgress] = useState<Progress>({ stage: "search", message: "Starting" });
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -267,7 +273,7 @@ export function LiveStepResults({ headingRef, onFinish }: { headingRef: HRef; on
         {[
           { n: jobs.length, l: "real listings scored" },
           { n: visible.filter((j) => j.careerChangerFriendly).length, l: "career changer friendly" },
-          { n: hidden.length, l: "hidden by your Shield" },
+          { n: hidden.length, l: "listings set aside" },
         ].map((s) => (
           <div key={s.l} className="card-base p-4 text-center">
             <div className="num font-display text-3xl font-semibold">{s.n}</div>
@@ -291,8 +297,21 @@ export function LiveStepResults({ headingRef, onFinish }: { headingRef: HRef; on
           <JobCard key={j.id} job={j} index={i} />
         ))}
       </div>
-      <div className="mt-8 flex flex-col items-center gap-3">
-        <Button size="lg" onClick={onFinish}>
+      {top[0] && (
+        <div className="mt-8 rounded-2xl border border-primary/30 bg-primary-soft/50 p-5 text-center">
+          <h2 className="font-display text-xl font-semibold">Your first tailored resume is free.</h2>
+          <p className="mx-auto mt-1 max-w-lg text-sm text-foreground/80">
+            We will rewrite your resume for {top[0].title} at {top[0].company.name}: reordering, rewording, and re-emphasizing what you already have. Nothing invented, and you approve every change.
+          </p>
+          <Button size="lg" className="mt-4" onClick={() => onTailor(top[0].id)}>
+            <Sparkles /> Tailor it for {top[0].company.name}
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">Your original stays exactly as it is. Tailoring never changes it.</p>
+        </div>
+      )}
+
+      <div className="mt-6 flex flex-col items-center gap-3">
+        <Button size="lg" variant="outline" onClick={onFinish}>
           <Rocket /> Go to Today's Plan
         </Button>
         <p className="text-xs text-muted-foreground">The rest of your matches are waiting in the feed.</p>

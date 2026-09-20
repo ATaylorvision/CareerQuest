@@ -34,8 +34,11 @@ import { BASE_RESUME, setBaseResume, type Resume } from "@/data/user";
 import { api, fileToBase64 } from "@/live/api";
 import { supabase } from "@/live/supabase";
 import { BASE_VERSION, useLive } from "@/live/LiveProvider";
+import { ResumeBuilder } from "./ResumeBuilder";
+import { TemplatePicker } from "@/components/TemplatePicker";
+import { RESUME_TEMPLATES, renderResumeHtml } from "@/data/resumeTemplates";
 import { LiveStepResults, LiveStepTranslator } from "./LiveSteps";
-import { BULLET_TRANSLATIONS, OTHER_FIELD_SAMPLES, PREVIOUS_FIELDS, TARGET_FIELDS } from "@/data/translator";
+import { BULLET_TRANSLATIONS, OTHER_FIELD_SAMPLES, PREVIOUS_FIELDS, TARGET_FIELDS, translateFreeText } from "@/data/translator";
 import { INTENSITY_META, type Intensity } from "@/data/plan";
 import { JOBS, type TargetField } from "@/data/jobs";
 import { cn } from "@/lib/utils";
@@ -73,7 +76,13 @@ export default function Onboarding() {
   /** Writes the resume, including any education and certifications the user corrected. */
   const saveResume = async (r: Resume) => {
     setBaseResume(r);
-    await supabase?.from("resumes").update({ parsed: r, updated_at: new Date().toISOString() }).eq("is_base", true);
+    if (!supabase) return;
+    const { data } = await supabase.from("resumes").update({ parsed: r, updated_at: new Date().toISOString() }).eq("is_base", true).select("id");
+    // Someone who built their resume here has no row yet, because nothing was uploaded.
+    if (!data?.length) {
+      const uid = (await supabase.auth.getUser()).data.user?.id;
+      if (uid) await supabase.from("resumes").insert({ user_id: uid, file_name: state.uploadedFileName ?? "Built in CareerQuest", parsed: r, is_base: true });
+    }
   };
 
   const goNext = async () => {
@@ -184,6 +193,7 @@ function StepHeading({ headingRef, title, sub }: HRef & { title: string; sub: st
 
 function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume | null; setParsed: (r: Resume | null) => void }) {
   const { state, update } = useStore();
+  const [building, setBuilding] = useState(false);
   const [drag, setDrag] = useState(false);
   const [parsing, setParsing] = useState<string | null>(null);
   const [newSkill, setNewSkill] = useState("");
@@ -254,9 +264,35 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
 
   return (
     <div>
-      <StepHeading headingRef={headingRef} title="Start with your resume" sub="We read it once, then show you exactly what we found. Fix anything we got wrong. Truth Mode will only ever use what is here." />
+      <StepHeading
+        headingRef={headingRef}
+        title="Start with your resume"
+        sub={
+          building
+            ? "No file needed. Answer what you can, in your own words. Truth Mode will only ever use what you put here."
+            : "We read it once, then show you exactly what we found. Fix anything we got wrong. Truth Mode will only ever use what is here."
+        }
+      />
 
-      {!parsed && !parsing && (
+      {building && !parsed && (
+        <ResumeBuilder
+          onCancel={() => setBuilding(false)}
+          onDone={(r) => {
+            setBaseResume(r);
+            setParsed(r);
+            setBuilding(false);
+            update((s) => {
+              s.uploadedFileName = "Built in CareerQuest";
+              if (!s.profile.name) s.profile.name = r.name;
+              if (!s.profile.location) s.profile.location = r.location;
+              s.resume.versions = [{ ...BASE_VERSION }, ...s.resume.versions.filter((v) => v.id !== "v-base")];
+              s.resume.activeVersionId = "v-base";
+            });
+          }}
+        />
+      )}
+
+      {!building && !parsed && !parsing && (
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -285,6 +321,9 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
                 Use the sample resume
               </Button>
             )}
+            <Button variant="outline" onClick={() => setBuilding(true)}>
+              I do not have one yet
+            </Button>
           </div>
           <input ref={input} type="file" accept={live ? ".pdf,.docx,.txt" : ".pdf,.doc,.docx,.txt,.rtf"} className="sr-only" onChange={(e) => onFiles(e.target.files)} aria-label="Upload resume file" />
           <p className="mt-5 max-w-md text-xs text-muted-foreground">
@@ -408,6 +447,25 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
               Certifications found: {parsed.certifications.join(", ")}. Education: {parsed.education.join(", ")}.
             </p>
           </div>
+
+          {/* Seeing the page now, rather than after the first tailoring, is what
+              makes the rest of setup feel like it is about a real document. */}
+          <div className="card-base p-5 sm:p-6">
+            <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">How it will look</h2>
+            <p className="mb-4 text-sm text-muted-foreground">Your own words in each layout. Every one is plain enough for screening software to read. You can change this any time.</p>
+            <TemplatePicker
+              label="Page layout"
+              items={RESUME_TEMPLATES.map((t) => ({
+                id: t.id,
+                name: t.name,
+                blurb: t.blurb,
+                bestFor: t.bestFor,
+                html: renderResumeHtml({ ...parsed, certsOwnSection: parsed.certifications.length > 0, changedIds: new Set(), editedIds: new Set() }, t.id, t.name, state.profile.headline),
+              }))}
+              value={state.resume.templateId}
+              onChange={(id) => update((d) => void (d.resume.templateId = id))}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -506,13 +564,19 @@ function StepTranslator({ headingRef }: HRef) {
   }, [prev, target]);
 
   const rows = useMemo(() => {
-    if (prev === "retail") {
-      return ["r1", "r2", "r3"].map((id) => {
-        const b = BASE_RESUME.roles[0].bullets.find((x) => x.id === id)!;
-        return { from: b.text, to: BULLET_TRANSLATIONS[id][target].phrases };
-      });
+    const own = BASE_RESUME.roles.flatMap((r) => r.bullets);
+    // The scripted lines only exist for the sample resume. Someone who wrote
+    // their own here gets their own lines translated instead of a stranger's.
+    const scripted = ["r1", "r2", "r3"].map((id) => ({ id, b: own.find((x) => x.id === id) }));
+    if (prev === "retail" && scripted.every((x) => x.b)) {
+      return scripted.map(({ id, b }) => ({ from: b!.text, to: BULLET_TRANSLATIONS[id][target].phrases, mine: true }));
     }
-    return OTHER_FIELD_SAMPLES[prev].map((x) => ({ from: x.text, to: x.out[target] }));
+    const sample = OTHER_FIELD_SAMPLES[prev];
+    if (sample) return sample.map((x) => ({ from: x.text, to: x.out[target], mine: false }));
+    return own
+      .slice(0, 3)
+      .map((b) => ({ from: b.text, to: translateFreeText(b.text), mine: true }))
+      .filter((r) => r.to.length > 0);
   }, [prev, target]);
 
   const targetMeta = TARGET_FIELDS.find((t) => t.id === target)!;
@@ -555,10 +619,15 @@ function StepTranslator({ headingRef }: HRef) {
       </div>
 
       <div className="space-y-3" aria-live="polite">
+        {rows.length === 0 && (
+          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            Add a line or two about what you did on the previous step and we will show you how it reads in {targetMeta.label}.
+          </p>
+        )}
         {rows.map((r, i) => (
           <div key={r.from} className="grid grid-cols-1 gap-3 rounded-xl border bg-card p-4 shadow-card md:grid-cols-[1fr_auto_1.1fr] md:items-center md:p-5">
             <div>
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{prev === "retail" ? "From your resume" : "Sample responsibility"}</div>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{r.mine ? "From your resume" : "Sample responsibility"}</div>
               <p className="text-sm">{r.from}</p>
             </div>
             <ArrowRight className="mx-auto h-4 w-4 rotate-90 text-primary md:rotate-0" aria-hidden />
@@ -583,7 +652,7 @@ function StepTranslator({ headingRef }: HRef) {
         ))}
       </div>
       <p className="mt-4 text-sm text-muted-foreground">
-        You can open the full Career Translator from the main menu any time. It works with every line of your resume, and with anything you type.
+        The full Career Translator sits in the Studio, beside your resume. It works with every line you have, and with anything you type.
       </p>
     </div>
   );
@@ -858,6 +927,11 @@ function StepIntensity({ headingRef }: HRef) {
 
 function StepResults({ headingRef, onFinish }: HRef & { onFinish: () => void }) {
   const { state, update } = useStore();
+  const nav = useNavigate();
+  const onTailor = (id: string) => {
+    update((s) => void (s.onboarded = true));
+    nav(`/app/studio?job=${id}&tailor=1`);
+  };
   const [ready, setReady] = useState(false);
   const ghosts = JOBS.filter((j) => j.legit.score < state.legitThreshold);
   const top = JOBS.filter((j) => j.legit.score >= state.legitThreshold)
@@ -930,8 +1004,21 @@ function StepResults({ headingRef, onFinish }: HRef & { onFinish: () => void }) 
               <JobCard key={j.id} job={j} index={i} />
             ))}
           </div>
-          <div className="mt-8 flex flex-col items-center gap-3">
-            <Button size="lg" onClick={onFinish}>
+        {top[0] && (
+          <div className="mt-8 rounded-2xl border border-primary/30 bg-primary-soft/50 p-5 text-center">
+            <h2 className="font-display text-xl font-semibold">Your first tailored resume is free.</h2>
+            <p className="mx-auto mt-1 max-w-lg text-sm text-foreground/80">
+              We will rewrite your resume for {top[0].title} at {top[0].company.name}: reordering, rewording, and re-emphasizing what you already have. Nothing invented, and you approve every change.
+            </p>
+            <Button size="lg" className="mt-4" onClick={() => onTailor(top[0].id)}>
+              <Sparkles /> Tailor it for {top[0].company.name}
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground">Your original stays exactly as it is. Tailoring never changes it.</p>
+          </div>
+        )}
+
+          <div className="mt-6 flex flex-col items-center gap-3">
+            <Button size="lg" variant="outline" onClick={onFinish}>
               <Rocket /> Go to Today's Plan
             </Button>
             <p className="text-xs text-muted-foreground">Your matches will be waiting in the feed.</p>

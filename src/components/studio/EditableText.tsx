@@ -14,6 +14,7 @@ export function EditableText({
   className,
   as: Tag = "span",
   multiline,
+  placeholder,
 }: {
   value: string;
   onCommit: (next: string) => void;
@@ -21,6 +22,8 @@ export function EditableText({
   className?: string;
   as?: "span" | "p" | "li" | "h2" | "div";
   multiline?: boolean;
+  /** Shown in place of nothing, so a blank line is still something you can click. */
+  placeholder?: string;
 }) {
   const ref = useRef<HTMLElement>(null);
 
@@ -39,6 +42,7 @@ export function EditableText({
       aria-multiline={multiline ? true : undefined}
       tabIndex={0}
       spellCheck
+      data-placeholder={placeholder}
       onBlur={commit}
       onKeyDown={(e: React.KeyboardEvent) => {
         if (e.key === "Escape") {
@@ -54,6 +58,8 @@ export function EditableText({
       className={cn(
         "cursor-text rounded-[3px] outline-none transition-colors",
         "hover:bg-primary/[0.07] focus:bg-primary/[0.07] focus:ring-2 focus:ring-primary/40",
+        // The node stays genuinely empty, so typing starts on a clean line.
+        placeholder && "empty:before:cursor-text empty:before:italic empty:before:text-neutral-400 empty:before:content-[attr(data-placeholder)]",
         className,
       )}
     >
