@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --canvas: 216 33% 98%;
+    --background: 0 0% 100%;
+    --foreground: 222 28% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 28% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 28% 13%;
+
+    --primary: 221 83% 47%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 218 90% 96%;
+
+    --secondary: 220 20% 96%;
+    --secondary-foreground: 222 28% 13%;
+    --muted: 220 20% 96%;
+    --muted-foreground: 220 9% 40%;
+    --accent: 218 40% 95.5%;
+    --accent-foreground: 222 28% 13%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 16% 90%;
+    --input: 220 14% 86%;
+    --ring: 221 83% 47%;
+    --shadow: 222 40% 20%;
+
+    /* status systems: text color / soft background / border */
+    --success: 152 65% 29%;
+    --success-soft: 145 55% 94%;
+    --success-border: 148 45% 80%;
+    --info: 214 78% 40%;
+    --info-soft: 213 90% 95.5%;
+    --info-border: 213 70% 84%;
+    --warning: 30 90% 32%;
+    --warning-soft: 43 100% 94%;
+    --warning-border: 40 85% 76%;
+    --danger: 0 68% 43%;
+    --danger-soft: 0 85% 96.5%;
+    --danger-border: 0 70% 86%;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --canvas: 224 28% 7%;
+    --background: 223 24% 10%;
+    --foreground: 214 25% 93%;
+    --card: 223 24% 10.5%;
+    --card-foreground: 214 25% 93%;
+    --popover: 223 24% 12%;
+    --popover-foreground: 214 25% 93%;
+
+    --primary: 217 92% 64%;
+    --primary-foreground: 224 40% 8%;
+    --primary-soft: 220 50% 17%;
+
+    --secondary: 222 18% 16%;
+    --secondary-foreground: 214 25% 93%;
+    --muted: 222 18% 15%;
+    --muted-foreground: 218 13% 68%;
+    --accent: 222 20% 16%;
+    --accent-foreground: 214 25% 93%;
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 16% 19%;
+    --input: 222 14% 24%;
+    --ring: 217 92% 64%;
+    --shadow: 224 50% 2%;
+
+    --success: 150 55% 58%;
+    --success-soft: 152 40% 13%;
+    --success-border: 152 35% 25%;
+    --info: 212 90% 70%;
+    --info-soft: 214 45% 15%;
+    --info-border: 214 40% 28%;
+    --warning: 40 92% 62%;
+    --warning-soft: 35 45% 12%;
+    --warning-border: 36 45% 26%;
+    --danger: 0 85% 70%;
+    --danger-soft: 0 40% 14%;
+    --danger-border: 0 40% 28%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-canvas text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  h1, h2, h3, .font-display {
+    font-optical-sizing: auto;
+    letter-spacing: -0.015em;
+  }
+  ::selection { background: hsl(var(--primary) / 0.18); }
+  :focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; border-radius: 6px; }
+  button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+}
+
+@layer utilities {
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+  .card-base { @apply bg-card text-card-foreground rounded-xl border shadow-card; }
+  .card-hover { @apply transition-all duration-200 hover:shadow-lift hover:-translate-y-0.5 hover:border-primary/30; }
+  .skeleton {
+    position: relative; overflow: hidden; background: hsl(var(--muted)); border-radius: 6px;
+  }
+  .skeleton::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(var(--background) / 0.7), transparent);
+    animation: shimmer 1.3s infinite;
+  }
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+  .page-enter { animation: fade-up 0.35s cubic-bezier(.2,.7,.2,1) both; }
+  .scrollbar-thin { scrollbar-width: thin; }
+  .text-balance { text-wrap: balance; }
+  .diff-add { background: hsl(var(--success-soft)); box-shadow: inset 3px 0 0 hsl(var(--success)); }
+  .diff-del { background: hsl(var(--danger-soft)); box-shadow: inset 3px 0 0 hsl(var(--danger)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
