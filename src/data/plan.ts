@@ -20,7 +20,7 @@ export function buildPlan(opts: { northvaleMatch: number; closesDay: string; wms
   return [
     { id: "p1", title: "Review 3 new matches from overnight", detail: "Two are Verified Live. One is a 93 percent match at Fieldstone.", minutes: 5, to: "/app/matches", cta: "Open matches", kind: "review" },
     { id: "p2", title: "Log notes from your Cedarline screening call", detail: "While it is fresh. Future you will thank you before the next round.", minutes: 5, to: "/app/receipts/a09", cta: "Open receipt", kind: "log" },
-    { id: "p3", title: `Tailor your resume for the Operations Manager role at Northvale Supply Co.`, detail: `It is a ${opts.northvaleMatch} percent match and closes ${opts.closesDay}.`, minutes: 15, to: "/app/resume?job=j01", cta: "Tailor resume", kind: "apply" },
+    { id: "p3", title: `Tailor your resume for the Operations Manager role at Northvale Supply Co.`, detail: `It is a ${opts.northvaleMatch} percent match and closes ${opts.closesDay}.`, minutes: 15, to: "/app/studio?job=j01", cta: "Tailor resume", kind: "apply" },
     { id: "p4", title: "Send a note to Marcus Reyes", detail: "He worked at Harbor & Pine Home too and is now at Cedarline Logistics. The draft is ready.", minutes: 5, to: "/app/connections?person=p1", cta: "See the draft", kind: "network" },
     { id: "p5", title: "Spend 20 minutes on the WMS gap", detail: `It shows up in ${opts.wmsCount} of your ${opts.savedTotal} saved jobs. Start with the free video series.`, minutes: 20, to: "/app/roadmap?gap=wms", cta: "Open roadmap", kind: "learn" },
   ];

@@ -164,8 +164,9 @@ function numberCheck(text: string, resumeText: string) {
   return nums.map((n) => ({ n, ok: resumeText.includes(n) }));
 }
 
-export default function CoverLetter() {
-  useDocTitle("Cover Letter Studio");
+/** `embedded` drops the page header and the job picker, because the Studio owns both. */
+export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
+  useDocTitle(embedded ? "Studio" : "Cover Letter Studio");
   const { state, update } = useStore();
   const pro = isPro(state);
   const [params, setParams] = useSearchParams();
@@ -278,30 +279,34 @@ export default function CoverLetter() {
 
   return (
     <div>
-      <PageHeader
-        title="Cover Letter Studio"
-        sub="Built only from your resume. Every paragraph shows where it came from, and gaps are addressed plainly instead of hidden."
-        actions={<TruthModeBadge />}
-      />
+      {!embedded && (
+        <PageHeader
+          title="Cover Letter Studio"
+          sub="Built only from your resume. Every paragraph shows where it came from, and gaps are addressed plainly instead of hidden."
+          actions={<TruthModeBadge />}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
         <div className="space-y-5">
           <Card className="space-y-5">
-            <div className="space-y-1.5">
-              <Label htmlFor="cl-job">Writing for</Label>
-              <Select value={job.id} onValueChange={(v) => setParams({ job: v })}>
-                <SelectTrigger id="cl-job">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {jobOptions.map((j) => (
-                    <SelectItem key={j.id} value={j.id}>
-                      {j.title} · {j.company.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {!embedded && (
+              <div className="space-y-1.5">
+                <Label htmlFor="cl-job">Writing for</Label>
+                <Select value={job.id} onValueChange={(v) => setParams({ job: v })}>
+                  <SelectTrigger id="cl-job">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {jobOptions.map((j) => (
+                      <SelectItem key={j.id} value={j.id}>
+                        {j.title} · {j.company.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <div className="text-sm font-medium">Tone</div>
               <Segmented<Tone>

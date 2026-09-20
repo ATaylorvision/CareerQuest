@@ -1,5 +1,5 @@
 // Library of requirements that show up in postings but are not in the demo resume.
-// Used by Job Detail (gaps), Resume Studio (Gaps we did not fill), Cover Letter Studio and the Skill Gap Roadmap.
+// Used by Job Detail (gaps), the Studio (Gaps we did not fill) and the Skill Gap Roadmap.
 
 export type GapSeverity = "dealbreaker" | "trainable" | "preferred";
 

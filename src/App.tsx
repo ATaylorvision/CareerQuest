@@ -1,4 +1,4 @@
-import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppStoreProvider } from "@/store/AppStore";
@@ -12,14 +12,12 @@ import Onboarding from "@/pages/onboarding/Onboarding";
 import Dashboard from "@/pages/app/Dashboard";
 import Matches from "@/pages/app/Matches";
 import JobDetail from "@/pages/app/JobDetail";
-import ResumeStudio from "@/pages/app/ResumeStudio";
-import CoverLetter from "@/pages/app/CoverLetter";
+import Studio from "@/pages/app/Studio";
 import Tracker from "@/pages/app/Tracker";
 import Receipt from "@/pages/app/Receipt";
 import Connections from "@/pages/app/Connections";
 import Copilot from "@/pages/app/Copilot";
 import Roadmap from "@/pages/app/Roadmap";
-import Translator from "@/pages/app/Translator";
 import Interview from "@/pages/app/Interview";
 import Billing from "@/pages/app/Billing";
 import Settings from "@/pages/app/Settings";
@@ -33,6 +31,12 @@ import AdminJobs from "@/pages/admin/Jobs";
 import AdminApplications from "@/pages/admin/Applications";
 import AdminSystem from "@/pages/admin/System";
 import AdminAuditLog from "@/pages/admin/AuditLog";
+
+/** Keeps old links working after Resume Studio, Cover Letters, and the Translator became one page. */
+function ToStudio() {
+  const { search } = useLocation();
+  return <Navigate to={`/app/studio${search}`} replace />;
+}
 
 function ThemedToaster() {
   const { theme } = useTheme();
@@ -56,8 +60,10 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="matches" element={<Matches />} />
               <Route path="jobs/:id" element={<JobDetail />} />
-              <Route path="resume" element={<ResumeStudio />} />
-              <Route path="cover-letter" element={<CoverLetter />} />
+              <Route path="studio" element={<Studio />} />
+              <Route path="resume" element={<ToStudio />} />
+              <Route path="cover-letter" element={<ToStudio />} />
+              <Route path="translator" element={<ToStudio />} />
               <Route path="tracker" element={<Tracker />} />
               <Route path="receipts/:id" element={<Receipt />} />
               <Route
@@ -83,7 +89,6 @@ export default function App() {
               <Route path="copilot" element={<Copilot />} />
               <Route path="check-in" element={<Navigate to="/app" replace />} />
               <Route path="roadmap" element={<Roadmap />} />
-              <Route path="translator" element={<Translator />} />
               <Route path="interview" element={<Interview />} />
               <Route path="billing" element={<Billing />} />
               <Route path="settings" element={<Settings />} />

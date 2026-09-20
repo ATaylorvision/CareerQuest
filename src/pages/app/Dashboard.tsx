@@ -466,7 +466,7 @@ export default function Dashboard() {
             </ul>
           </Card>
 
-          <Link to="/app/translator" className="card-base card-hover block overflow-hidden p-5">
+          <Link to="/app/studio" className="card-base card-hover block overflow-hidden p-5">
             <div className="flex items-center gap-2 text-sm font-semibold text-primary">
               <Languages className="h-4 w-4" /> Career Translator
             </div>

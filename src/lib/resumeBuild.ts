@@ -5,12 +5,28 @@ import { renderResumeHtml } from "@/data/resumeTemplates";
 export interface BuiltResume extends Resume {
   certsOwnSection: boolean;
   changedIds: Set<string>;
+  /** Fields the person retyped themselves, so the document can mark them. */
+  editedIds: Set<string>;
 }
 
-/** Apply only the accepted changes to the base resume. Nothing else can enter the document. */
-export function buildResume(changes: TailorChange[], decisions: Record<string, string>): BuiltResume {
+/** What the person typed straight onto the document, which always wins over a suggestion. */
+export interface ManualEdits {
+  /** Keyed by field id: "summary", "skills", a bullet id, or "<role id>.title" and friends. */
+  fields?: Record<string, string>;
+  /** Shared by every version, because these belong to the account rather than one application. */
+  contact?: { name?: string; email?: string; phone?: string; location?: string };
+}
+
+const ROLE_FIELDS = ["title", "company", "location", "start", "end"] as const;
+
+/**
+ * Apply only the accepted changes to the base resume, then whatever the person
+ * typed over the top. Nothing else can enter the document.
+ */
+export function buildResume(changes: TailorChange[], decisions: Record<string, string>, manual: ManualEdits = {}): BuiltResume {
   const r = structuredClone(BASE_RESUME) as Resume;
   const changedIds = new Set<string>();
+  const editedIds = new Set<string>();
   let certsOwnSection = false;
   for (const c of changes) {
     if (decisions[c.id] !== "accepted") continue;
@@ -36,7 +52,40 @@ export function buildResume(changes: TailorChange[], decisions: Record<string, s
       }
     }
   }
-  return { ...r, certsOwnSection, changedIds };
+  const fields = manual.fields ?? {};
+  const put = (id: string, apply: (v: string) => void) => {
+    const v = fields[id];
+    if (v === undefined) return;
+    apply(v);
+    editedIds.add(id);
+  };
+
+  put("summary", (v) => void (r.summary = v));
+  put("skills", (v) => void (r.skills = v.split(/,\s*(?![^()]*\))/).map((x) => x.trim()).filter(Boolean)));
+  put("education", (v) => void (r.education = v.split(/\s*\|\s*/).map((x) => x.trim()).filter(Boolean)));
+  put("certifications", (v) => void (r.certifications = v.split(/\s*\|\s*/).map((x) => x.trim()).filter(Boolean)));
+  for (const role of r.roles) {
+    for (const f of ROLE_FIELDS) put(`${role.id}.${f}`, (v) => void (role[f] = v));
+    role.bullets = role.bullets
+      .map((b) => {
+        const v = fields[b.id];
+        if (v === undefined) return b;
+        editedIds.add(b.id);
+        return { ...b, text: v };
+      })
+      // An emptied line is a deleted line. It is the only way to remove one by typing.
+      .filter((b) => b.text.trim().length > 0);
+  }
+
+  const c = manual.contact ?? {};
+  for (const k of ["name", "email", "phone", "location"] as const) {
+    if (c[k] !== undefined && c[k] !== "") {
+      r[k] = c[k]!;
+      editedIds.add(`contact.${k}`);
+    }
+  }
+
+  return { ...r, certsOwnSection, changedIds, editedIds };
 }
 
 export function resumeToText(r: BuiltResume) {

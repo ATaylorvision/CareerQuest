@@ -312,10 +312,10 @@ export default function JobDetail() {
             </Button>
           )}
           <Button variant="outline" asChild>
-            <Link to={`/app/resume?job=${job.id}`}><FileText /> Tailor resume</Link>
+            <Link to={`/app/studio?job=${job.id}`}><FileText /> Tailor resume</Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link to={`/app/cover-letter?job=${job.id}`}><PenLine /> Cover letter</Link>
+            <Link to={`/app/studio?job=${job.id}`}><PenLine /> Cover letter</Link>
           </Button>
           {!app && (
             <Button variant="ghost" onClick={() => save(job)}>
@@ -333,7 +333,7 @@ export default function JobDetail() {
             <LiveTranslatorCard job={job} loading={enrich.loading} failed={enrich.failed} />
           ) : (
           <Card>
-            <SectionTitle icon={Languages} sub={`How your experience reads to a ${target.roleTitle} hiring manager.`} right={<Button asChild variant="ghost" size="sm"><Link to={`/app/translator?target=${job.target}`}>Full translator</Link></Button>}>
+            <SectionTitle icon={Languages} sub={`How your experience reads to a ${target.roleTitle} hiring manager.`} right={<Button asChild variant="ghost" size="sm"><Link to={`/app/studio?job=${job.id}`}>Open in Studio</Link></Button>}>
               Career Translator for this role
             </SectionTitle>
             <blockquote className="mb-4 rounded-lg border-l-4 border-primary bg-primary-soft/60 px-4 py-3 text-sm leading-relaxed">

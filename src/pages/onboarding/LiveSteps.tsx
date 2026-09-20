@@ -123,7 +123,7 @@ export function LiveStepTranslator({ headingRef, onBack }: { headingRef: HRef; o
           </div>
         ))}
       </div>
-      <p className="mt-4 text-sm text-muted-foreground">These only rename work you already did. Nothing is added. The full Career Translator, in the main menu, covers every line of your resume.</p>
+      <p className="mt-4 text-sm text-muted-foreground">These only rename work you already did. Nothing is added. The full Career Translator, in the Studio, covers every line of your resume.</p>
     </div>
   );
 }

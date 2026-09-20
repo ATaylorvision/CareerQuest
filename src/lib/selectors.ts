@@ -86,7 +86,7 @@ export function visibleJobs(s: AppState) {
   return JOBS.filter((j) => j.legit.score >= s.legitThreshold && !s.dismissedJobIds.includes(j.id));
 }
 
-/* ---------------- Resume Studio ---------------- */
+/* ---------------- Studio ---------------- */
 
 const SUMMARY_BY_TARGET: Record<string, string> = {
   supply: "Operations manager with eight years running multi site retail operations, focused on inventory control, vendor coordination, and process improvement. Lean Six Sigma Yellow Belt.",

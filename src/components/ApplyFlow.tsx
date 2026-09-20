@@ -136,7 +136,7 @@ export function ApplyFlow({ job, open, onOpenChange }: { job: Job; open: boolean
                 {!tailored && (
                   <p className="text-xs text-muted-foreground">
                     Not tailored for this role yet.{" "}
-                    <Link to={`/app/resume?job=${job.id}`} className="font-medium text-primary hover:underline">
+                    <Link to={`/app/studio?job=${job.id}`} className="font-medium text-primary hover:underline">
                       Tailor it first
                     </Link>
                   </p>
@@ -147,7 +147,7 @@ export function ApplyFlow({ job, open, onOpenChange }: { job: Job; open: boolean
                   <Label htmlFor="incl">Include cover letter</Label>
                   <Switch id="incl" checked={includeLetter} onCheckedChange={setIncludeLetter} />
                 </div>
-                <p className="text-xs text-muted-foreground">{savedLetter ? "Using the letter you saved in Cover Letter Studio." : job.live ? "You have not saved a cover letter for this job. It will be sent without one." : "Using a Truth Mode draft built from your resume."}</p>
+                <p className="text-xs text-muted-foreground">{savedLetter ? "Using the letter you saved in the Studio." : job.live ? "You have not saved a cover letter for this job. It will be sent without one." : "Using a Truth Mode draft built from your resume."}</p>
               </div>
             </div>
 

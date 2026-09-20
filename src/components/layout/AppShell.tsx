@@ -6,19 +6,15 @@ import {
   CreditCard,
   FileText,
   Kanban,
-  Languages,
   LogOut,
   Map as MapIcon,
   Maximize2,
   Menu,
-  MessagesSquare,
   Moon,
-  PenLine,
   Search,
   Settings,
   ShieldCheck,
   Sun,
-  Users,
   Lock,
   MoreHorizontal,
   Sparkles,
@@ -59,22 +55,9 @@ const NAV: { heading?: string; items: NavItem[] }[] = [
   {
     heading: "Tools",
     items: [
-      { to: "/app/translator", label: "Career Translator", icon: Languages, feature: true },
-      { to: "/app/resume", label: "Resume Studio", icon: FileText },
-      { to: "/app/cover-letter", label: "Cover Letters", icon: PenLine },
-    ],
-  },
-  {
-    heading: "Momentum",
-    items: [
+      // Resume, cover letter, and the Career Translator all live here now.
+      { to: "/app/studio", label: "Studio", icon: FileText },
       { to: "/app/roadmap", label: "Skill Gap Roadmap", icon: MapIcon },
-      { to: "/app/interview", label: "Interview Prep", icon: MessagesSquare, pro: true },
-    ],
-  },
-  {
-    heading: "People",
-    items: [
-      { to: "/app/connections", label: "Insider Connections", icon: Users, addOn: "connections" },
       { to: "/app/copilot", label: `Copilot (${COPILOT_NAME})`, icon: Bird },
     ],
   },
@@ -174,7 +157,7 @@ const MOBILE_TABS = [
   { to: "/app", label: "Today", icon: CalendarCheck2 },
   { to: "/app/matches", label: "Matches", icon: Search },
   { to: "/app/tracker", label: "Tracker", icon: Kanban },
-  { to: "/app/translator", label: "Translate", icon: Languages },
+  { to: "/app/studio", label: "Studio", icon: FileText },
 ];
 
 export function AppShell() {

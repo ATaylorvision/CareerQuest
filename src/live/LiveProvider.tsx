@@ -42,7 +42,7 @@ export function emptyLiveState(name: string, email: string): AppState {
   s.activity = Array.from({ length: 21 }, () => false);
   s.activityDate = new Date().toLocaleDateString("en-CA");
   s.streakBrokenDemo = false;
-  s.resume = { jobId: "", decisions: {}, versions: [], activeVersionId: "", tailoredJobs: [], templateId: DEFAULT_RESUME_TEMPLATE, letterTemplateId: DEFAULT_LETTER_TEMPLATE };
+  s.resume = { jobId: "", decisions: {}, versions: [], activeVersionId: "", tailoredJobs: [], templateId: DEFAULT_RESUME_TEMPLATE, letterTemplateId: DEFAULT_LETTER_TEMPLATE, edits: {}, contact: {} };
   s.letters = [];
   s.connections = [];
   s.chats = [];

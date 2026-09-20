@@ -59,7 +59,19 @@ export interface AppState {
   /** The calendar day that activity[0] refers to (YYYY-MM-DD). Used to roll the streak forward. */
   activityDate: string;
   streakBrokenDemo: boolean;
-  resume: { jobId: string; decisions: Record<string, Decision>; versions: ResumeVersion[]; activeVersionId: string; tailoredJobs: string[]; templateId: string; letterTemplateId: string };
+  resume: {
+    jobId: string;
+    decisions: Record<string, Decision>;
+    versions: ResumeVersion[];
+    activeVersionId: string;
+    tailoredJobs: string[];
+    templateId: string;
+    letterTemplateId: string;
+    /** Wording typed straight onto the document, per job then per field. Kept per version on purpose. */
+    edits?: Record<string, Record<string, string>>;
+    /** Name and contact details belong to the account, so every version shares them. */
+    contact?: { name?: string; email?: string; phone?: string; location?: string };
+  };
   letters: SavedLetter[];
   connections: Connection[];
   chats: Conversation[];
@@ -102,7 +114,7 @@ export function seedState(): AppState {
     activity: [...SEED_ACTIVITY],
     activityDate: "",
     streakBrokenDemo: false,
-    resume: { jobId: "j01", decisions: {}, versions: SEED_VERSIONS.map((v) => ({ ...v })), activeVersionId: "v-supply", tailoredJobs: [], templateId: DEFAULT_RESUME_TEMPLATE, letterTemplateId: DEFAULT_LETTER_TEMPLATE },
+    resume: { jobId: "j01", decisions: {}, versions: SEED_VERSIONS.map((v) => ({ ...v })), activeVersionId: "v-supply", tailoredJobs: [], templateId: DEFAULT_RESUME_TEMPLATE, letterTemplateId: DEFAULT_LETTER_TEMPLATE, edits: {}, contact: {} },
     letters: [],
     connections: SEED_CONNECTIONS.map((c) => ({ ...c })),
     chats: SEED_CONVERSATIONS.map((c) => ({ ...c, messages: [...c.messages] })),

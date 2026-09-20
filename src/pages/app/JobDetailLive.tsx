@@ -40,7 +40,7 @@ function Skeleton({ lines = 3 }: { lines?: number }) {
 export function LiveTranslatorCard({ job, loading, failed }: { job: Job; loading: boolean; failed: boolean }) {
   return (
     <Card>
-      <SectionTitle icon={Languages} sub="How your real experience reads for this job. Only relabeled, never added to." right={<Button asChild variant="ghost" size="sm"><Link to={`/app/translator?target=${job.target}`}>Full translator</Link></Button>}>
+      <SectionTitle icon={Languages} sub="How your real experience reads for this job. Only relabeled, never added to." right={<Button asChild variant="ghost" size="sm"><Link to={`/app/studio?job=${job.id}`}>Open in Studio</Link></Button>}>
         Career Translator for this role
       </SectionTitle>
       {loading ? (

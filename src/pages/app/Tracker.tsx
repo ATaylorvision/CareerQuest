@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, BadgeCheck, CircleDot, GripVertical, MoreHorizontal, Receipt as ReceiptIcon, Send, Trash2 } from "lucide-react";
+import { ArrowRight, BadgeCheck, CircleDot, GripVertical, Lock, MessagesSquare, MoreHorizontal, Receipt as ReceiptIcon, Send, Trash2, Users } from "lucide-react";
 import { Card, CompanyLogo, PageHeader, ScoreRing } from "@/components/common";
 import { MethodBadge, Pill, VerifiedMark } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,10 @@ export default function Tracker() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<Column | null>(null);
   const proof = proofScore(state.applications);
+  // Interview prep and Insider Connections belong to an application in flight,
+  // so they live here rather than as their own places to remember to visit.
+  const talking = state.applications.filter((a) => a.column === "screening" || a.column === "interview");
+  const hasConnections = !!state.billing.addOns?.connections;
 
   const onDrop = (col: Column) => {
     const app = state.applications.find((a) => a.id === dragId);
@@ -196,6 +200,41 @@ export default function Tracker() {
         </div>
         <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">We never label anything "auto-applied." Each card shows exactly how it was sent. Honesty is the feature.</p>
       </Card>
+
+      {/* What to do next with the applications that are moving */}
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Link
+          to="/app/interview"
+          className="card-base card-hover flex items-start gap-3 p-4 transition-colors"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
+            <MessagesSquare className="h-5 w-5" aria-hidden />
+          </span>
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 font-semibold">
+              Interview prep <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+            </span>
+            <span className="mt-0.5 block text-sm text-muted-foreground">
+              {talking.length > 0
+                ? `${talking.length} application${talking.length === 1 ? " is" : "s are"} at the talking stage. Practice the questions these employers actually ask.`
+                : "Questions for the roles you are targeting, with answers built from your own resume."}
+            </span>
+          </span>
+        </Link>
+        <Link to="/app/connections" className="card-base card-hover flex items-start gap-3 p-4 transition-colors">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <Users className="h-5 w-5" aria-hidden />
+          </span>
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 font-semibold">
+              Insider Connections
+              {!hasConnections && <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-label="Paid add on" />}
+              <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+            </span>
+            <span className="mt-0.5 block text-sm text-muted-foreground">A referral beats a cold application. Find the people already inside the companies on this board.</span>
+          </span>
+        </Link>
+      </div>
 
       {/* Board */}
       <div className="-mx-4 overflow-x-auto px-4 pb-4 scrollbar-thin sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0" tabIndex={0} aria-label="Application board, scrolls sideways">

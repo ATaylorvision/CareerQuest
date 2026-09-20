@@ -24,7 +24,7 @@ export function buildLivePlan(state: AppState): PlanItem[] {
   if (JOBS.length === 0) {
     return [
       { id: id("find"), title: "Find your first matches", detail: "We will pull live listings for your target roles and score each one against your resume.", minutes: 2, to: "/app/matches", cta: "Find jobs", kind: "review" },
-      { id: id("translate"), title: "See how your experience translates", detail: "Pick the field you want and read your own resume in its language.", minutes: 5, to: "/app/translator", cta: "Open translator", kind: "learn" },
+      { id: id("translate"), title: "See how your experience translates", detail: "Pick the field you want and read your own resume in its language.", minutes: 5, to: "/app/studio", cta: "Open Studio", kind: "learn" },
       { id: id("wren"), title: "Tell Wren what you are aiming for", detail: "A two minute chat helps Wren give sharper advice.", minutes: 3, to: "/app/copilot", cta: "Open Wren", kind: "review" },
     ];
   }
@@ -108,8 +108,8 @@ export function buildLivePlan(state: AppState): PlanItem[] {
     title: `Read how your experience translates for ${field?.label.toLowerCase() ?? "your target field"}`,
     detail: "Use the wording in your resume and in interviews.",
     minutes: 5,
-    to: "/app/translator",
-    cta: "Open translator",
+    to: "/app/studio",
+    cta: "Open Studio",
     kind: "learn",
   });
   items.push({

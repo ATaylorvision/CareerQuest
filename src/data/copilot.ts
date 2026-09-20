@@ -61,7 +61,7 @@ export const SEED_CONVERSATIONS: Conversation[] = [
     updatedAt: daysAgo(6, 14),
     messages: [
       m("r1", "user", "Can you look at my Supply Chain Ops v2 resume and tell me what is weak?", 6, 14),
-      m("r2", "assistant", "It is solid. ATS score 88, and it has the best response rate of your three versions, 3 responses from 7 sends. Here is what I would still fix.\n\n**1. Your summary still says \"retail.\"** The first word a recruiter reads frames everything. \"Operations manager\" is accurate and does not hide anything, your employer name makes the industry clear.\n\n**2. The team bullet has no outcome.** \"Led a team of 6 store managers and about 120 hourly associates\" tells scope but not results. Do you have anything true to add, like turnover, promotions, or engagement scores? If not, leave it. I will not invent one.\n\n**3. Skills order.** Oracle Retail is buried. For supply chain roles it is your closest thing to a WMS, so move it up.\n\n**4. Length is good.** One page. Keep it that way.\n\nWant me to open Resume Studio with these as suggested changes? You can accept or reject each one.", 6, 14),
+      m("r2", "assistant", "It is solid. ATS score 88, and it has the best response rate of your three versions, 3 responses from 7 sends. Here is what I would still fix.\n\n**1. Your summary still says \"retail.\"** The first word a recruiter reads frames everything. \"Operations manager\" is accurate and does not hide anything, your employer name makes the industry clear.\n\n**2. The team bullet has no outcome.** \"Led a team of 6 store managers and about 120 hourly associates\" tells scope but not results. Do you have anything true to add, like turnover, promotions, or engagement scores? If not, leave it. I will not invent one.\n\n**3. Skills order.** Oracle Retail is buried. For supply chain roles it is your closest thing to a WMS, so move it up.\n\n**4. Length is good.** One page. Keep it that way.\n\nWant me to open the Studio with these as suggested changes? You can accept or reject each one.", 6, 14),
       m("r3", "user", "For #2, 5 of my store associates got promoted. Can that go in?", 6, 14),
       m("r4", "assistant", "Yes, and it is already in your resume under the Store Operations Manager role, so Truth Mode can use it. The honest version for the regional bullet would need regional numbers. Do you know how many promotions happened across your six stores? If you do, add it to your base resume first, then I can use it. If not, we keep the promotions line where it is.", 6, 15),
     ],
@@ -90,7 +90,7 @@ const RESPONSES: { test: RegExp; reply: string }[] = [
   {
     test: /resume|ats|bullet|tailor/i,
     reply:
-      "Here is what I see in your current version for the Northvale Operations Manager role.\n\n**Keep:** your 22% stockout reduction and the $210K vendor recovery. Those are your two best proof points for supply chain work.\n\n**Change:**\n- Lead with multi site scope. Change \"stores\" to \"sites\" in your first bullet. Same facts, different frame.\n- Move the replenishment bullet to the top of your regional role. It is their requirement #2.\n- Put your Lean Six Sigma Yellow Belt under its own Certifications heading so screening software reads it.\n\nResume Studio already has these queued as suggested changes with reasons. You accept or reject each one. Nothing goes in without you.",
+      "Here is what I see in your current version for the Northvale Operations Manager role.\n\n**Keep:** your 22% stockout reduction and the $210K vendor recovery. Those are your two best proof points for supply chain work.\n\n**Change:**\n- Lead with multi site scope. Change \"stores\" to \"sites\" in your first bullet. Same facts, different frame.\n- Move the replenishment bullet to the top of your regional role. It is their requirement #2.\n- Put your Lean Six Sigma Yellow Belt under its own Certifications heading so screening software reads it.\n\nThe Studio already has these queued as suggested changes with reasons. You accept or reject each one. Nothing goes in without you.",
   },
   {
     test: /gap|missing|qualif|skill/i,
@@ -120,7 +120,7 @@ const RESPONSES: { test: RegExp; reply: string }[] = [
   {
     test: /cover letter|letter/i,
     reply:
-      "For cover letters, the rule I follow is the same as your resume: nothing that is not already true. The strongest structure for a career changer is:\n\n1. One sentence on what you did, in their language\n2. One or two proof points with numbers\n3. One honest sentence about your biggest gap and how you will close it\n4. Why this company, specifically\n\nCover Letter Studio builds this from your resume and shows the source for every claim.",
+      "For cover letters, the rule I follow is the same as your resume: nothing that is not already true. The strongest structure for a career changer is:\n\n1. One sentence on what you did, in their language\n2. One or two proof points with numbers\n3. One honest sentence about your biggest gap and how you will close it\n4. Why this company, specifically\n\nThe Studio builds this from your resume and shows the source for every claim.",
   },
   {
     test: /sad|tired|discourag|hopeless|stress|anxious|overwhelm/i,
