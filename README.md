@@ -30,19 +30,20 @@ npm run security               # two accounts, then tries every way one could re
 | Feature | How it works |
 |---|---|
 | Accounts | Supabase Auth, email and password, password reset. |
-| Resume parsing | The real file goes to Claude (`api/resume/parse.ts`). PDF, .docx, .txt. Text is copied verbatim. |
+| Resume parsing | The real file goes to Claude (`api/resume/parse.ts`). PDF, .docx, .txt. Text is copied verbatim. People with no file answer plain questions instead (`src/pages/onboarding/ResumeBuilder.tsx`). |
 | Job listings | Adzuna, plus JSearch once the RapidAPI key is subscribed. Titles only, freshest first, agencies and internships flagged or filtered. |
 | Listing legitimacy | `src/lib/legit.ts`. Signals: days posted, reposts we observed, on the company's own careers page (Greenhouse, Lever, Ashby feeds), agency vs employer, salary listed. Applicant counts are shown as "Not available" because job boards do not share them. |
 | Matching | Two stages. `score` rates every listing quickly. `detail` writes the translation, requirement checks, and gaps for the top matches and any job you open. A truth guard rejects any number the model did not get from the resume or posting. |
-| Career Translator | `api/translate.ts`. Relabels resume lines, never adds facts. |
+| Studio | `src/pages/app/Studio.tsx`. One page per job: the document itself is editable in place, with the ATS score, the tailor's suggestions, the gaps, the Career Translator, and saved versions beside it. The cover letter is the second document under the same job picker. |
+| Career Translator | `api/translate.ts`. Relabels resume lines, never adds facts. Lives as a panel in the Studio. |
 | Wren (copilot) | `api/chat.ts`. Streams Claude replies with the user's resume, matches, and applications as context. |
 | Proof of Application | Applying to a real job records a receipt. Confirmation evidence (pasted email or screenshot) is read by Claude before anything counts as verified (`api/receipt/verify.ts`). |
-| Dashboard | One screen to run the search. Live counts on top, then today's plan, the six week chart, and next week's target. It replaced the separate Today and Weekly Check In pages. |
+| Dashboard | One screen to run the search. Streak on top, then counts, today's plan, the six week chart, and next week's target. A profile question a day sharpens matching, and the resume downloads straight from here. |
 | Templates | Five resume layouts and five cover letter layouts in `src/data/resumeTemplates.ts` and `letterTemplates.ts`. Each thumbnail is the real template rendered with the user's own content. All are one page, black and white, and made of selectable text so an ATS can read them. |
-| Commute radius | Onboarding asks for a home base and a distance, not just a list of city names. |
+| Commute radius | Search starts from the home base and passes the person's own radius to the job board. Onsite and hybrid listings out of range are dropped, by coordinates where both ends have them (`api/_lib/geo.ts`). There is no nationwide fallback. |
 | Add ons | Insider Connections is bought separately from any plan (`billing.addOns`, written by the server only). |
 | Data control | Settings exports everything from the database and can delete the account, its rows, and its files. |
-| Admin panel | `/admin`, staff only. Live metrics, every account, the job cache with its Shield verdicts, the application feed, and a service health check. Staff can change a plan, reset onboarding, grant admin, and delete an account. Every change is written to an audit log. |
+| Admin panel | `/admin`, staff only. Live metrics, every account, the job cache with its legitimacy verdicts, the application feed, and a service health check. Staff can change a plan, reset onboarding, grant admin, and delete an account. Every change is written to an audit log. |
 
 ## Not built yet for real accounts
 

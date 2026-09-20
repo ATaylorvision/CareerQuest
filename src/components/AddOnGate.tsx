@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Check, Lock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useDocTitle } from "@/hooks/useDocTitle";
 import { Card } from "@/components/common";
 import { useStore, type AddOns } from "@/store/AppStore";
 
@@ -22,6 +23,7 @@ interface Props {
  * from Stripe only, so nothing in the browser can unlock it.
  */
 export function AddOnGate({ addOn, title, blurb, points, children }: Props) {
+  useDocTitle(title);
   const { state } = useStore();
   if (state.billing.addOns?.[addOn]) return <>{children}</>;
 
