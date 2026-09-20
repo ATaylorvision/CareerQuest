@@ -431,3 +431,15 @@ end $$;
 drop trigger if exists guard_profile_columns on public.profiles;
 create trigger guard_profile_columns before update on public.profiles
   for each row execute function public.guard_profile_columns();
+
+-- ---------------------------------------------------------------
+-- Where a listing sits, and where the person lives. Together these
+-- turn the commute radius into a real filter instead of a number
+-- that was collected and never used.
+-- ---------------------------------------------------------------
+alter table public.jobs add column if not exists latitude double precision;
+alter table public.jobs add column if not exists longitude double precision;
+alter table public.profiles add column if not exists home_lat double precision;
+alter table public.profiles add column if not exists home_lng double precision;
+-- The home base string those coordinates belong to, so moving re-runs the lookup.
+alter table public.profiles add column if not exists home_geocoded_for text;

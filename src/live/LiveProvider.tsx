@@ -8,6 +8,7 @@ import { DEFAULT_RESUME_TEMPLATE } from "@/data/resumeTemplates";
 import { DEFAULT_LETTER_TEMPLATE } from "@/data/letterTemplates";
 import { LIVE_AVAILABLE, supabase } from "./supabase";
 import { loadJobs } from "./pipeline";
+import { setHomePoint } from "./mapJob";
 
 interface LiveCtx {
   phase: "loading" | "ready";
@@ -66,6 +67,8 @@ interface ProfileRow {
   locations: string[];
   remote_pref: AppState["prefs"]["remote"];
   max_distance_miles: number | null;
+  home_lat: number | null;
+  home_lng: number | null;
   salary_floor: number | null;
   must_haves: string[];
   dealbreakers: string[];
@@ -118,6 +121,8 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       const s: AppState = { ...base, ...savedState, mode: "live", authed: true, v: base.v };
 
       setIsAdmin(!!profile?.is_admin);
+      // Distance is per person, so the listings are measured against this.
+      setHomePoint(profile?.home_lat != null && profile?.home_lng != null ? { lat: profile.home_lat, lng: profile.home_lng } : null);
 
       if (profile) {
         s.profile = { name, email: u.email ?? "", location: profile.location ?? "", headline: profile.headline ?? "" };
@@ -196,6 +201,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     hydrated.current = false;
     setUser(null);
     setIsAdmin(false);
+    setHomePoint(null);
     if (modeRef.current === "live") {
       restoreDemoJobs();
       restoreDemoResume();

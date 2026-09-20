@@ -29,14 +29,11 @@ import { isPro } from "@/lib/selectors";
 import { Logo, PersonAvatar, WrenAvatar } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Slider } from "@/components/ui/slider";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { Chat, newConversation } from "@/components/copilot/Chat";
 import { COPILOT_NAME } from "@/data/copilot";
-import { JOBS } from "@/data/jobs";
 import { diffDays } from "@/lib/date";
 import { useLive } from "@/live/LiveProvider";
 import { useJobsVersion } from "@/hooks/useJobs";
@@ -148,45 +145,6 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function ShieldControl() {
-  const { state, update } = useStore();
-  const hidden = JOBS.filter((j) => j.legit.score < state.legitThreshold).length;
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5 rounded-full" aria-label={`Ghost Job Shield. Hiding listings below ${state.legitThreshold}.`}>
-          <ShieldCheck className="text-success" />
-          <span className="hidden sm:inline">Shield</span>
-          <span className="num text-muted-foreground">{state.legitThreshold}+</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-80">
-        <div className="space-y-3">
-          <div>
-            <div className="text-sm font-semibold">Ghost Job Shield</div>
-            <p className="mt-0.5 text-xs text-muted-foreground">Hide any listing with a legitimacy score below your threshold. This applies everywhere in CareerQuest.</p>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span>Hide below</span>
-            <span className="num font-semibold">{state.legitThreshold}</span>
-          </div>
-          <Slider
-            value={[state.legitThreshold]}
-            min={0}
-            max={90}
-            step={5}
-            onValueChange={([v]) => update((s) => void (s.legitThreshold = v))}
-            aria-label="Legitimacy threshold"
-          />
-          <p className="text-xs text-muted-foreground">
-            <span className="num font-semibold text-foreground">{hidden}</span> of {JOBS.length} listings hidden right now.
-          </p>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 function TrialChip() {
   const { state } = useStore();
   const b = state.billing;
@@ -287,7 +245,6 @@ export function AppShell() {
           </div>
           <div className="flex-1" />
           <TrialChip />
-          <ShieldControl />
           <Button variant="ghost" size="icon-sm" onClick={toggle} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
             {theme === "dark" ? <Sun /> : <Moon />}
           </Button>

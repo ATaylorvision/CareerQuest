@@ -15,6 +15,9 @@ export interface RawJob {
   employer_posted: boolean | null;
   remote_hint: boolean;
   category?: string;
+  /** Where the listing sits, when the board tells us. Used for the commute radius. */
+  latitude: number | null;
+  longitude: number | null;
 }
 
 async function getJson(url: string, init?: RequestInit, ms = 12_000): Promise<unknown> {
@@ -43,9 +46,15 @@ interface AdzunaResult {
   salary_max?: number;
   salary_is_predicted?: string;
   category?: { label?: string };
+  latitude?: number;
+  longitude?: number;
 }
 
-export async function adzunaSearch(what: string, where: string, opts: { maxDaysOld?: number; perPage?: number; remote?: boolean } = {}): Promise<RawJob[]> {
+export async function adzunaSearch(
+  what: string,
+  where: string,
+  opts: { maxDaysOld?: number; perPage?: number; remote?: boolean; distanceMiles?: number } = {},
+): Promise<RawJob[]> {
   const id = process.env.ADZUNA_APP_ID;
   const key = process.env.ADZUNA_APP_KEY;
   if (!id || !key) return [];
@@ -62,7 +71,9 @@ export async function adzunaSearch(what: string, where: string, opts: { maxDaysO
   q.delete("what");
   if (where && !/^remote/i.test(where)) {
     q.set("where", where);
-    q.set("distance", "40");
+    // Adzuna filters by radius on its side. This is the search that keeps a
+    // person in New York from being shown an onsite job in Texas.
+    q.set("distance", String(Math.max(5, Math.min(200, Math.round(opts.distanceMiles ?? 30)))));
   }
   if (opts.remote) q.set("what_and", "remote");
   const data = (await getJson(`https://api.adzuna.com/v1/api/jobs/us/search/1?${q}`)) as { results?: AdzunaResult[] };
@@ -85,6 +96,8 @@ export async function adzunaSearch(what: string, where: string, opts: { maxDaysO
       employer_posted: null,
       remote_hint: /\b(remote|work from home|telecommut)/i.test(text),
       category: r.category?.label,
+      latitude: Number.isFinite(r.latitude) ? r.latitude! : null,
+      longitude: Number.isFinite(r.longitude) ? r.longitude! : null,
     };
   });
 }
@@ -105,6 +118,8 @@ interface JSearchResult {
   job_salary_period?: string;
   job_publisher?: string;
   job_apply_is_direct?: boolean;
+  job_latitude?: number;
+  job_longitude?: number;
   apply_options?: { apply_link: string; is_direct: boolean; publisher?: string }[];
 }
 
@@ -133,6 +148,8 @@ export async function jsearchSearch(query: string): Promise<RawJob[]> {
       // "Not direct" only means it came through a job board, so agency status is left to the text checks.
       employer_posted: null,
       remote_hint: !!r.job_is_remote,
+      latitude: Number.isFinite(r.job_latitude) ? r.job_latitude! : null,
+      longitude: Number.isFinite(r.job_longitude) ? r.job_longitude! : null,
     }));
   } catch {
     return [];

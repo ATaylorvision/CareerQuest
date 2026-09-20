@@ -9,6 +9,8 @@ export interface JobRow {
   company: string;
   location: string | null;
   remote_type: string | null;
+  latitude: number | null;
+  longitude: number | null;
   salary_min: number | null;
   salary_max: number | null;
   description: string | null;
@@ -40,6 +42,25 @@ export interface MatchRow {
 }
 
 const MODE: Record<string, WorkMode> = { remote: "Remote", hybrid: "Hybrid", onsite: "Onsite", unknown: "Not stated" };
+
+/**
+ * Where the signed in person lives, set once when their profile loads. Job rows
+ * are shared between users, so the distance has to be worked out here rather
+ * than stored on the listing.
+ */
+let homePoint: { lat: number; lng: number } | null = null;
+export const setHomePoint = (p: { lat: number; lng: number } | null) => void (homePoint = p);
+
+const EARTH_MILES = 3958.8;
+const rad = (d: number) => (d * Math.PI) / 180;
+
+function milesFromHome(lat: number | null, lng: number | null): number | null {
+  if (!homePoint || lat == null || lng == null) return null;
+  const dLat = rad(lat - homePoint.lat);
+  const dLng = rad(lng - homePoint.lng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(homePoint.lat)) * Math.cos(rad(lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * EARTH_MILES * Math.asin(Math.min(1, Math.sqrt(s))));
+}
 
 function hue(name: string) {
   let h = 0;
@@ -114,6 +135,7 @@ export function rowToJob(row: JobRow, match: MatchRow): Job {
     storyLine: t.story ?? "",
     atsProvider: row.ats_provider ?? undefined,
     checkedAt: row.company_site_checked_at ?? undefined,
+    distanceMiles: row.remote_type === "remote" ? null : milesFromHome(row.latitude, row.longitude),
     // Marks jobs whose full analysis (translations, requirement checks, gaps) has not run yet.
     ...(t.enriched ? {} : { translations: undefined }),
   };

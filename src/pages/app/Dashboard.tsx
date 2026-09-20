@@ -283,7 +283,7 @@ export default function Dashboard() {
             <Card>
               <SectionTitle
                 icon={Sparkles}
-                sub="Posted in the last few days and above your Shield threshold."
+                sub="Posted in the last few days, and each one cleared our legitimacy checks."
                 right={
                   <Button asChild variant="ghost" size="sm">
                     <Link to="/app/matches">

@@ -21,6 +21,8 @@ interface SearchResult {
   verified: number;
   agencies: number;
   ghostRisk: number;
+  /** Listings we found and then dropped for sitting outside the commute radius. */
+  outOfRange?: number;
   note?: string;
 }
 

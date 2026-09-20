@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: process.env.SINGLE ? "./" : "/",
-    server: { host: "127.0.0.1", port: 5173 },
+    server: { host: "127.0.0.1", port: Number(process.env.PORT) || 5173 },
     plugins: [react(), setupPage(), devApi(), process.env.SINGLE ? viteSingleFile() : null].filter(Boolean),
     resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
     build: { outDir: process.env.SINGLE ? "dist-single" : "dist", chunkSizeWarningLimit: 2000 },

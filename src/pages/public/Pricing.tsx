@@ -7,7 +7,7 @@ import { useDocTitle } from "@/hooks/useDocTitle";
 
 const ROWS: [string, string | boolean, string | boolean][] = [
   ["Job matching and match scores", "Unlimited", "Unlimited"],
-  ["Ghost Job Shield legitimacy scores", true, true],
+  ["Listings checked for legitimacy", true, true],
   ["Copilot chat", "Unlimited", "Unlimited"],
   ["Career Translator", true, true],
   ["Today's Plan and streaks", true, true],
@@ -102,7 +102,7 @@ export default function Pricing() {
             </AccordionItem>
             <AccordionItem value="b">
               <AccordionTrigger>Is the Free plan actually free forever?</AccordionTrigger>
-              <AccordionContent className="text-muted-foreground">Yes. Unlimited matching, the Ghost Job Shield, the tracker with receipts, Career Translator, Today's Plan, and Copilot chat stay free. Tailored resumes and cover letters are limited to three each per month.</AccordionContent>
+              <AccordionContent className="text-muted-foreground">Yes. Unlimited matching, the legitimacy checks on every listing, the tracker with receipts, Career Translator, Today's Plan, and Copilot chat stay free. Tailored resumes and cover letters are limited to three each per month.</AccordionContent>
             </AccordionItem>
             <AccordionItem value="c">
               <AccordionTrigger>Does one click apply mean you apply without asking me?</AccordionTrigger>

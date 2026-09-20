@@ -42,7 +42,7 @@ export default function AdminJobs() {
       <PageHeader
         eyebrow="Admin"
         title="Job cache"
-        sub="Every real listing CareerQuest has pulled in, newest first, with the Ghost Job Shield verdict it was given."
+        sub="Every real listing CareerQuest has pulled in, newest first, with the legitimacy verdict it was given."
         actions={
           <SearchBox
             value={q}
@@ -64,7 +64,7 @@ export default function AdminJobs() {
             <p className="py-8 text-center text-sm text-muted-foreground">{search ? `No cached listing matches "${search}".` : "No listings have been pulled in yet. They arrive the first time someone runs a search."}</p>
           ) : (
             <>
-              <Table head={["Job", "Source", "Shield", "Pay", "Posted", "First seen", ""]}>
+              <Table head={["Job", "Source", "Legitimacy", "Pay", "Posted", "First seen", ""]}>
                 {data.rows.map((j) => (
                   <tr key={j.id} className="transition-colors hover:bg-accent/50">
                     <Td>

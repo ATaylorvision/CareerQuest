@@ -165,7 +165,7 @@ function UserPanel({ userId, onClose, onChanged }: { userId: string; onClose: ()
               <Field label="Remote" value={p.remote_pref} />
               <Field label="Salary floor" value={p.salary_floor ? `$${p.salary_floor.toLocaleString()}` : null} raw />
               <Field label="Search intensity" value={p.intensity} />
-              <Field label="Shield threshold" value={String(p.legit_threshold)} raw />
+              <Field label="Legitimacy threshold" value={String(p.legit_threshold)} raw />
             </div>
 
             {!!p.target_roles?.length && (

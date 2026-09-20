@@ -8,7 +8,7 @@ import { daysFromNow, fmtLongDate } from "@/lib/date";
 export const FREE_FEATURES = [
   "Unlimited job matching and match scores",
   "Unlimited Copilot chat",
-  "Ghost Job Shield on every listing",
+  "Every listing checked against the employer's own careers page",
   "Application tracker and receipts",
   "Career Translator",
   "Today's Plan and streaks",

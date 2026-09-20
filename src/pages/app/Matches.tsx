@@ -34,25 +34,10 @@ interface Filters {
 const DEFAULTS: Filters = { q: "", sort: "match", ccf: false, modes: [], cats: [], badges: [], floor: false, posted: 0 };
 
 function FilterPanel({ f, setF, onReset }: { f: Filters; setF: (fn: (f: Filters) => Filters) => void; onReset: () => void }) {
-  const { state, update } = useStore();
+  const { state } = useStore();
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
-  const hidden = JOBS.filter((j) => j.legit.score < state.legitThreshold).length;
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-success-border bg-success-soft/60 p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <ShieldCheck className="h-4 w-4 text-success" /> Ghost Job Shield
-        </div>
-        <div className="mt-3 flex items-center justify-between text-sm">
-          <Label htmlFor="thr" className="font-normal">Hide below</Label>
-          <span className="num font-semibold">{state.legitThreshold}</span>
-        </div>
-        <Slider id="thr" className="mt-2" value={[state.legitThreshold]} min={0} max={90} step={5} onValueChange={([v]) => update((s) => void (s.legitThreshold = v))} aria-label="Legitimacy threshold" />
-        <p className="mt-2 text-xs text-muted-foreground">
-          <span className="num font-medium text-foreground">{hidden}</span> listings hidden. Applies across the app.
-        </p>
-      </section>
-
       <section className="flex items-start justify-between gap-3">
         <div>
           <Label htmlFor="ccf" className="flex items-center gap-1.5 text-sm font-semibold">
@@ -259,7 +244,7 @@ export default function Matches() {
               <span className="inline-flex flex-wrap items-center gap-2 text-muted-foreground">
                 <span aria-hidden>·</span>
                 <span>
-                  <span className="num">{hiddenByShield.length}</span> hidden by your Shield
+                  <span className="num">{hiddenByShield.length}</span> left out as likely not real
                 </span>
                 <button onClick={() => setShowHidden((s) => !s)} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
                   {showHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {showHidden ? "Hide them again" : "Show them"}
@@ -275,7 +260,7 @@ export default function Matches() {
 
           {showHidden && hiddenByShield.length > 0 && (
             <div className="mb-4 rounded-xl border border-danger-border bg-danger-soft p-4 text-sm animate-fade-up">
-              <div className="font-semibold text-danger">You are seeing listings your Shield would normally hide.</div>
+              <div className="font-semibold text-danger">You are seeing listings we would normally leave out.</div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {hiddenByShield.map((j) => (
                   <span key={j.id} className="inline-flex items-center gap-1.5 rounded-lg bg-background px-2 py-1">

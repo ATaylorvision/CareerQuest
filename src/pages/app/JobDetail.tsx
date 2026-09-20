@@ -270,7 +270,7 @@ export default function JobDetail() {
         <div className="mb-4 flex gap-3 rounded-xl border border-danger-border bg-danger-soft p-4 text-sm">
           <AlertTriangle className="h-5 w-5 shrink-0 text-danger" />
           <div>
-            <b className="text-danger">Your Shield would hide this listing.</b> Its legitimacy score of {job.legit.score} is below your threshold of {state.legitThreshold}. See why below before spending time on it.
+            <b className="text-danger">We would normally leave this listing out.</b> Its legitimacy score of {job.legit.score} is below the {state.legitThreshold} we ask for. See why below before spending time on it.
           </div>
         </div>
       )}

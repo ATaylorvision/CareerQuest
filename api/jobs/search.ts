@@ -2,9 +2,12 @@ import { admin, body, route } from "../_lib/http.js";
 import { adzunaSearch, jsearchSearch, looksEvergreen, looksLikeAgency, remoteType, type RawJob } from "../_lib/sources.js";
 import { checkCompanySite, type SiteCheck } from "../_lib/ats.js";
 import { computeLegitimacy, type LegitSignals } from "../../src/lib/legit.js";
+import { geocodeUS, haversineMiles, type Point } from "../_lib/geo.js";
 
 const MAX_JOBS = 30;
 const DAY = 86_400_000;
+/** The commute slider tops out here, where the person told us distance is not a filter. */
+const ANY_DISTANCE = 100;
 
 async function pool<T, R>(items: T[], size: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -22,48 +25,130 @@ async function pool<T, R>(items: T[], size: number, fn: (x: T) => Promise<R>): P
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+/** The city part of "Austin, TX". */
+const cityOf = (s: string) => norm(s).split(/\s+/).slice(0, 2).join(" ");
+
+/**
+ * A listing that never went through a radius search and carries no coordinates
+ * still counts as local when its location names one of the person's own places.
+ */
+function namesOneOf(location: string, anchors: string[]): boolean {
+  const l = norm(location);
+  if (!l) return false;
+  return anchors.some((a) => {
+    const city = norm(a).split(",")[0]?.split(/\s+/)[0] ?? "";
+    return city.length > 2 && (l === norm(a) || l.includes(cityOf(a)) || l.includes(city));
+  });
+}
+
+/** A listing plus whether the board already filtered it to a commute radius. */
+type Found = RawJob & { scoped: boolean };
+
+const tag = (p: Promise<RawJob[]>, scoped: boolean): Promise<Found[]> =>
+  p.then((rows) => rows.map((r) => ({ ...r, scoped }))).catch((): Found[] => []);
+
 export default route(async (req, _res, user) => {
   const { extraQuery } = body<{ extraQuery?: string }>(req);
   const db = admin();
 
-  const { data: profile } = await db.from("profiles").select("target_roles, locations, remote_pref, salary_floor").eq("id", user.id).single();
+  const { data: profile } = await db
+    .from("profiles")
+    .select("location, target_roles, locations, remote_pref, salary_floor, max_distance_miles, home_lat, home_lng, home_geocoded_for")
+    .eq("id", user.id)
+    .single();
+
   const roles = (profile?.target_roles?.length ? profile.target_roles : ["operations manager"]).slice(0, 3);
-  const locs = (profile?.locations?.length ? profile.locations : [""]).filter((l: string) => !/^remote/i.test(l)).slice(0, 2);
-  const wantsRemote = profile?.remote_pref === "remote" || (profile?.locations ?? []).some((l: string) => /^remote/i.test(l));
-  if (locs.length === 0) locs.push("");
+  const remotePref: string = profile?.remote_pref ?? "any";
+  const radius = Math.max(5, Math.min(ANY_DISTANCE, profile?.max_distance_miles ?? 30));
+  const anyDistance = radius >= ANY_DISTANCE;
 
-  // 1. Pull real listings.
-  const jobs: Promise<RawJob[]>[] = [];
-  for (const role of roles) {
-    for (const loc of locs) jobs.push(adzunaSearch(role, loc).catch(() => []));
-    if (wantsRemote) jobs.push(adzunaSearch(role, "", { remote: true }).catch(() => []));
+  // Where the person actually lives comes first. The extra locations are the
+  // other places they said they would also work, not a replacement for home.
+  const home = (profile?.location ?? "").trim();
+  const extras: string[] = (profile?.locations ?? []).filter((l: string) => l && !/^remote/i.test(l));
+  const listedRemote: boolean = (profile?.locations ?? []).some((l: string) => /^remote/i.test(l));
+  const areas = [...new Set([home, ...extras].filter(Boolean))].slice(0, 3);
+  const openToRemote = remotePref === "remote" || remotePref === "any" || listedRemote;
+  const remoteOnly = remotePref === "remote";
+
+  if (areas.length === 0 && !openToRemote) {
+    return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange: 0, note: "Add your home base in Settings so we can search where you actually live." };
   }
-  if (extraQuery) jobs.push(adzunaSearch(extraQuery, locs[0] ?? "").catch(() => []));
-  jobs.push(jsearchSearch(`${roles[0]} in ${locs[0] || "United States"}`));
-  const raw = (await Promise.all(jobs)).flat();
 
-  // 2. De-duplicate, newest first.
+  // Coordinates for home, looked up once and kept on the profile afterwards.
+  let homePoint: Point | null =
+    profile?.home_lat != null && profile?.home_lng != null && profile?.home_geocoded_for === home
+      ? { lat: profile.home_lat, lng: profile.home_lng }
+      : null;
+  if (home && !homePoint) {
+    homePoint = await geocodeUS(home);
+    if (homePoint) await db.from("profiles").update({ home_lat: homePoint.lat, home_lng: homePoint.lng, home_geocoded_for: home }).eq("id", user.id);
+  }
+
+  // 1. Pull real listings, each one scoped to a place the person named.
+  const searchRemote = remoteOnly || listedRemote || (openToRemote && areas.length === 0);
+  const queries: Promise<Found[]>[] = [];
+  for (const role of roles) {
+    if (!remoteOnly) for (const loc of areas) queries.push(tag(adzunaSearch(role, loc, { distanceMiles: radius }), true));
+    if (searchRemote) queries.push(tag(adzunaSearch(role, "", { remote: true }), false));
+  }
+  if (extraQuery) {
+    if (areas.length && !remoteOnly) queries.push(tag(adzunaSearch(extraQuery, areas[0], { distanceMiles: radius }), true));
+    else queries.push(tag(adzunaSearch(extraQuery, "", { remote: searchRemote }), false));
+  }
+  queries.push(tag(jsearchSearch(`${roles[0]} in ${areas[0] || "United States"}`), false));
+  const raw = (await Promise.all(queries)).flat();
+
+  /** How far a listing sits from home, when both ends have coordinates. */
+  const milesFromHome = (r: Found): number | null =>
+    homePoint && r.latitude != null && r.longitude != null ? haversineMiles(homePoint, { lat: r.latitude, lng: r.longitude }) : null;
+
+  /** Is this listing somewhere the person is actually willing to work? */
+  function reachable(r: Found): boolean {
+    const mode = remoteType(r);
+    if (mode === "remote") return openToRemote;
+    if (remoteOnly) return false;
+    if (anyDistance) return true;
+    const miles = milesFromHome(r);
+    if (miles != null) return miles <= radius;
+    // No coordinates: trust the radius the board itself applied, or the place name.
+    return r.scoped || namesOneOf(r.location, areas);
+  }
+
+  // 2. De-duplicate, drop anything out of reach, newest first.
   const seen = new Set<string>();
-  const list: RawJob[] = [];
+  const list: Found[] = [];
+  let outOfRange = 0;
   for (const r of raw.sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? ""))) {
     const k1 = `${r.source}:${r.external_id}`;
     const k2 = `${norm(r.company)}|${norm(r.title)}`;
     if (!r.title || !r.apply_url || seen.has(k1) || seen.has(k2)) continue;
     if (/\b(intern|internship|co-?op|apprentice(ship)?)\b/i.test(r.title)) continue;
-    if (wantsRemote && locs.length === 1 && !locs[0] && !r.remote_hint) continue;
+    if (!reachable(r)) {
+      outOfRange++;
+      continue;
+    }
     seen.add(k1);
     seen.add(k2);
     list.push(r);
   }
   const picked = list.slice(0, MAX_JOBS);
-  if (picked.length === 0) return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, note: "No listings came back. Try a broader role title or location." };
+  if (picked.length === 0) {
+    const note = outOfRange
+      ? `Every listing we found sits outside your ${radius} mile range${home ? ` from ${home}` : ""}. Widen the range in Settings, or add remote.`
+      : "No listings came back. Try a broader role title or location.";
+    return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange, note };
+  }
 
   // 3. What we already know about these listings.
   const ids = picked.map((r) => `${r.source}:${r.external_id}`);
   const companies = [...new Set(picked.map((r) => r.company))];
   const since = new Date(Date.now() - 90 * DAY).toISOString();
   const [{ data: existing }, { data: history }] = await Promise.all([
-    db.from("jobs").select("id, first_seen_at, company_site_status, company_site_checked_at, ats_provider, description, apply_url, employer_posted").in("id", ids),
+    db
+      .from("jobs")
+      .select("id, first_seen_at, company_site_status, company_site_checked_at, ats_provider, description, apply_url, employer_posted, latitude, longitude")
+      .in("id", ids),
     db.from("jobs").select("id, company, title").in("company", companies).gte("first_seen_at", since),
   ]);
   const known = new Map((existing ?? []).map((e) => [e.id, e]));
@@ -112,6 +197,8 @@ export default route(async (req, _res, user) => {
       company: r.company,
       location: r.location,
       remote_type: remoteType(r),
+      latitude: r.latitude ?? prev?.latitude ?? null,
+      longitude: r.longitude ?? prev?.longitude ?? null,
       salary_min: r.salary_min,
       salary_max: r.salary_max,
       salary_period: r.salary_period,
@@ -141,5 +228,6 @@ export default route(async (req, _res, user) => {
     verified: rows.filter((r) => r.legit.badge === "verified").length,
     agencies: rows.filter((r) => !r.employer_posted).length,
     ghostRisk: rows.filter((r) => r.legit.badge === "ghost").length,
+    outOfRange,
   };
 });

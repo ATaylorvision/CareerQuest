@@ -32,7 +32,7 @@ npm run security               # two accounts, then tries every way one could re
 | Accounts | Supabase Auth, email and password, password reset. |
 | Resume parsing | The real file goes to Claude (`api/resume/parse.ts`). PDF, .docx, .txt. Text is copied verbatim. |
 | Job listings | Adzuna, plus JSearch once the RapidAPI key is subscribed. Titles only, freshest first, agencies and internships flagged or filtered. |
-| Ghost Job Shield | `src/lib/legit.ts`. Signals: days posted, reposts we observed, on the company's own careers page (Greenhouse, Lever, Ashby feeds), agency vs employer, salary listed. Applicant counts are shown as "Not available" because job boards do not share them. |
+| Listing legitimacy | `src/lib/legit.ts`. Signals: days posted, reposts we observed, on the company's own careers page (Greenhouse, Lever, Ashby feeds), agency vs employer, salary listed. Applicant counts are shown as "Not available" because job boards do not share them. |
 | Matching | Two stages. `score` rates every listing quickly. `detail` writes the translation, requirement checks, and gaps for the top matches and any job you open. A truth guard rejects any number the model did not get from the resume or posting. |
 | Career Translator | `api/translate.ts`. Relabels resume lines, never adds facts. |
 | Wren (copilot) | `api/chat.ts`. Streams Claude replies with the user's resume, matches, and applications as context. |

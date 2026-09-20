@@ -30,8 +30,8 @@ const SECTIONS = [
 
 const NOTIFS: { k: string; label: string; desc: string }[] = [
   { k: "dailyPlan", label: "Today's Plan", desc: "One email or push at 7 a.m. with your actions for the day." },
-  { k: "newMatches", label: "New strong matches", desc: "Only matches above 85 that pass your Shield." },
-  { k: "ghostAlerts", label: "Ghost job alerts", desc: "If a job you saved turns Stale or Ghost Risk." },
+  { k: "newMatches", label: "New strong matches", desc: "Only matches above 85 that cleared our legitimacy checks." },
+  { k: "ghostAlerts", label: "Listing quality alerts", desc: "If a job you saved turns Stale or Ghost risk." },
   { k: "applicationUpdates", label: "Application updates", desc: "When an employer views, moves, or responds." },
   { k: "weeklyCheckIn", label: "Weekly Check In reminder", desc: "Sunday afternoon." },
   { k: "tips", label: "Coaching tips from Wren", desc: "Occasional, never more than twice a week." },
@@ -99,8 +99,15 @@ export default function Settings() {
             >
               {(["name", "email", "location"] as const).map((k) => (
                 <div key={k} className="space-y-1.5">
-                  <Label htmlFor={`pf-${k}`} className="capitalize">{k}</Label>
-                  <Input id={`pf-${k}`} value={profile[k]} readOnly={live && k === "email"} onChange={(e) => setProfile({ ...profile, [k]: e.target.value })} />
+                  <Label htmlFor={`pf-${k}`} className="capitalize">{k === "location" ? "Home base" : k}</Label>
+                  <Input
+                    id={`pf-${k}`}
+                    value={profile[k]}
+                    readOnly={live && k === "email"}
+                    placeholder={k === "location" ? "City, State" : undefined}
+                    onChange={(e) => setProfile({ ...profile, [k]: e.target.value })}
+                  />
+                  {k === "location" && <p className="text-xs text-muted-foreground">We search out from here. Onsite and hybrid roles further than your commute range are left out.</p>}
                 </div>
               ))}
               <div className="space-y-1.5 sm:col-span-2">
@@ -188,10 +195,13 @@ export default function Settings() {
                 </div>
                 <div>
                   <div className="mb-2 flex justify-between text-sm">
-                    <span className="font-medium" id="lt-l">Ghost Job Shield threshold</span>
-                    <span className="num font-semibold">{state.legitThreshold}</span>
+                    <span className="font-medium" id="cr-l">How far you would commute</span>
+                    <span className="num font-semibold">{p.maxDistanceMiles >= 100 ? "Any distance" : `${p.maxDistanceMiles} miles`}</span>
                   </div>
-                  <Slider aria-labelledby="lt-l" value={[state.legitThreshold]} min={0} max={90} step={5} onValueChange={([v]) => update((s) => void (s.legitThreshold = v))} />
+                  <Slider aria-labelledby="cr-l" value={[p.maxDistanceMiles]} min={5} max={100} step={5} onValueChange={([v]) => update((s) => void (s.prefs.maxDistanceMiles = v))} />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {p.maxDistanceMiles >= 100 ? "Distance will not rule anything out." : `Measured from ${profile.location || "your home base"}. Remote roles are never filtered by distance.`}
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

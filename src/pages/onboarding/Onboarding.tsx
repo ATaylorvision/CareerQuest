@@ -418,7 +418,7 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
 
 const SITUATIONS: { id: Situation; title: string; body: string; adapts: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "changer", title: "Career changer", body: "I want to move into a different field.", adapts: "We lead with Career Translator and roles that do not require exact industry experience.", icon: RefreshCcw },
-  { id: "laidoff", title: "Recently laid off", body: "My role was cut and I am restarting.", adapts: "We help you move quickly, skip ghost jobs, and talk about the layoff with confidence.", icon: Undo2 },
+  { id: "laidoff", title: "Recently laid off", body: "My role was cut and I am restarting.", adapts: "We help you move quickly, skip listings that are not real, and talk about the layoff with confidence.", icon: Undo2 },
   { id: "employed", title: "Employed and looking", body: "I have a job but want something better.", adapts: "We keep things quiet and focused, with fewer, higher fit actions each day.", icon: Briefcase },
   { id: "returning", title: "Returning to work", body: "I have been out for a while by choice.", adapts: "We help you frame the gap and refresh the skills employers screen for.", icon: UserRound },
 ];
@@ -879,7 +879,7 @@ function StepResults({ headingRef, onFinish }: HRef & { onFinish: () => void }) 
               steps={[
                 "Scanning 2,340 open listings across the Northeast and remote",
                 "Checking each one against its company's own careers page",
-                `Setting aside ${ghosts.length} likely ghost jobs and 312 duplicates`,
+                `Setting aside ${ghosts.length} listings we could not stand behind, and 312 duplicates`,
                 "Scoring transferable fit against your resume",
                 "Ranking by match and legitimacy",
               ]}
@@ -900,13 +900,13 @@ function StepResults({ headingRef, onFinish }: HRef & { onFinish: () => void }) 
             <h1 ref={headingRef} tabIndex={-1} className="font-display text-3xl font-semibold outline-none sm:text-4xl text-balance">
               Your experience counts in more places than you think.
             </h1>
-            <p className="mx-auto mt-2 max-w-xl text-muted-foreground">Here are your five strongest matches. Every one passed the Ghost Job Shield, and every score shows its reasoning.</p>
+            <p className="mx-auto mt-2 max-w-xl text-muted-foreground">Here are your five strongest matches. We checked every one against the employer’s own careers page, and every score shows its reasoning.</p>
           </div>
           <div className="mb-6 grid grid-cols-3 gap-3">
             {[
               { n: shown.length, l: "real matches found" },
               { n: shown.filter((j) => j.careerChangerFriendly).length, l: "career changer friendly" },
-              { n: ghosts.length, l: "ghost jobs hidden" },
+              { n: ghosts.length, l: "listings set aside" },
             ].map((s) => (
               <div key={s.l} className="card-base p-4 text-center">
                 <div className="num font-display text-3xl font-semibold">{s.n}</div>

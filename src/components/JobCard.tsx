@@ -76,6 +76,12 @@ export function JobCard({ job, compact, index = 0 }: { job: Job; compact?: boole
                 </span>
                 <span aria-hidden>·</span>
                 <span>{job.mode}</span>
+                {job.distanceMiles != null && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span className="num">{job.distanceMiles < 1 ? "Under a mile" : `${job.distanceMiles} mi`} from home</span>
+                  </>
+                )}
               </div>
             </div>
             <ScoreRing value={job.match} size={compact ? 46 : 52} sub="match" label="Match score" />

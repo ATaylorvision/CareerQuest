@@ -332,10 +332,10 @@ export default function Landing() {
             />
             <Feature
               id="shield"
-              eyebrow="3. Ghost Job Shield"
+              eyebrow="3. Real listings only"
               title="Know which jobs are real before you spend an evening on them."
-              body={`Every listing gets a legitimacy score out of 100 with the reasoning laid out. In our sample feed, ${ghostCount} of ${JOBS.length} listings are flagged as Ghost Risk. Set a threshold and never see them again.`}
-              points={["Verified Live means we found it on the company's own careers page in the last 24 hours", "Stale and Ghost Risk labels explain exactly which signals triggered them", "A Verify on company site button on every listing"]}
+              body={`Before a listing reaches you we look for it on the employer's own careers page and check how long it has been circulating. In our sample feed, ${ghostCount} of ${JOBS.length} listings do not survive that check and are left out.`}
+              points={["Verified Live means we found it on the company's own careers page in the last 24 hours", "Every listing carries a plain label, and the signals behind it are on the page", "A Verify on company site button on every listing"]}
               visual={<ShieldVisual />}
             />
             <Feature

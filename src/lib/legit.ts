@@ -1,4 +1,4 @@
-// Ghost Job Shield scoring. Pure functions, shared by the app and the server.
+// Listing legitimacy scoring. Pure functions, shared by the app and the server.
 // Signals that job boards do not provide are marked "unknown" and never guessed.
 
 export interface LegitSignals {
@@ -23,7 +23,7 @@ export interface LegitFactor {
 }
 
 /* ------------------------------------------------------------------ */
-/* Ghost Job Shield: the scoring logic is shown to the user as-is.     */
+/* Legitimacy: the scoring logic is shown to the user as-is.           */
 /* ------------------------------------------------------------------ */
 
 export interface LegitResult {

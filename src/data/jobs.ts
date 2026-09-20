@@ -66,6 +66,8 @@ export interface Job {
   salaryPeriod?: string;
   atsProvider?: string;
   checkedAt?: string;
+  /** Straight line miles from the person's home base. Null when either end has no coordinates. */
+  distanceMiles?: number | null;
 }
 
 /* ------------------------------------------------------------------ */
