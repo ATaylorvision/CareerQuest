@@ -1,6 +1,137 @@
+import { useMemo, useRef, useState } from "react";
+import { Check, Loader2, Sparkles, X } from "lucide-react";
 import { EditableText } from "./EditableText";
 import type { BuiltResume } from "@/lib/resumeBuild";
+import { wordDiff } from "@/lib/diff";
 import { cn } from "@/lib/utils";
+
+/** What Wren would change on one line, shown when the person points at it. */
+export interface LineSuggestion {
+  id: string;
+  before: string;
+  after: string;
+  why: string;
+}
+
+interface Hover {
+  suggestions?: Record<string, LineSuggestion>;
+  onUse?: (id: string) => void;
+  onSkip?: (id: string) => void;
+  /** Asks for a rewrite of one line. Resolves to false when there was nothing worth changing. */
+  onImprove?: (field: string) => Promise<boolean>;
+}
+
+function SuggestionCard({ s, field, onUse, onSkip }: { s: LineSuggestion; field: string; onUse: () => void; onSkip: () => void }) {
+  const { right } = useMemo(() => wordDiff(s.before, s.after), [s.before, s.after]);
+  const plain = field === "skills";
+  return (
+    <div role="region" aria-label="Wren's suggestion for this line" className="rounded-xl border border-primary/30 bg-white p-3 font-sans text-[13px] leading-relaxed text-neutral-900 shadow-lift">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-primary">
+        <Sparkles className="h-3.5 w-3.5" aria-hidden /> Wren suggests
+      </div>
+      <p className="rounded-lg bg-success-soft/70 p-2">
+        {plain
+          ? s.after
+          : right.map((t, i) => (
+              <span key={i} className={cn(t.kind === "add" && "rounded bg-success/15 px-0.5 font-medium text-success")}>
+                {t.text}{" "}
+              </span>
+            ))}
+      </p>
+      <p className="mt-1.5 text-xs text-neutral-600">{s.why}</p>
+      <div className="mt-2 flex gap-1.5">
+        <button type="button" onClick={onUse} className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+          <Check className="h-3.5 w-3.5" /> Use it
+        </button>
+        <button type="button" onClick={onSkip} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-neutral-50">
+          <X className="h-3.5 w-3.5" /> Skip
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Wraps a line so that pointing at it shows Wren's suggestion for it, or offers
+ * to write one. Typing on the line hides the card so it never sits over your words.
+ */
+function Suggestable({ field, hover, children }: { field: string; hover: Hover; children: React.ReactNode }) {
+  const s = hover.suggestions?.[field];
+  const [open, setOpen] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const timer = useRef<number>();
+
+  const show = () => {
+    window.clearTimeout(timer.current);
+    setOpen(true);
+  };
+  const hide = () => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setOpen(false), 200);
+  };
+  const isText = (e: React.SyntheticEvent) => (e.target as HTMLElement).getAttribute?.("role") === "textbox";
+
+  const improve = async () => {
+    if (!hover.onImprove || busy) return;
+    setBusy(true);
+    setNote(null);
+    const found = await hover.onImprove(field).catch(() => false);
+    setBusy(false);
+    if (!found) {
+      setNote("This line is already strong.");
+      window.setTimeout(() => setNote(null), 3500);
+    }
+  };
+
+  if (!hover.suggestions && !hover.onImprove) return <>{children}</>;
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocusCapture={(e) => {
+        if (isText(e)) {
+          setTyping(true);
+          setOpen(false);
+        }
+      }}
+      onBlurCapture={(e) => isText(e) && setTyping(false)}
+      onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+    >
+      {children}
+      {s && (
+        <button
+          type="button"
+          aria-label="See Wren's suggestion for this line"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="absolute -right-3 top-0 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-white transition-transform hover:scale-110"
+        >
+          <Sparkles className="h-3 w-3" aria-hidden />
+        </button>
+      )}
+      {open && !typing && s && (
+        <div className="absolute left-0 right-0 top-full z-30 pt-1.5" onMouseEnter={show} onMouseLeave={hide}>
+          <SuggestionCard s={s} field={field} onUse={() => hover.onUse?.(s.id)} onSkip={() => hover.onSkip?.(s.id)} />
+        </div>
+      )}
+      {open && !typing && !s && hover.onImprove && (
+        <button
+          type="button"
+          onClick={() => void improve()}
+          disabled={busy}
+          className="absolute -top-3 right-0 z-20 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-white px-2 py-0.5 font-sans text-[11px] font-medium text-primary shadow-sm hover:bg-primary/5 disabled:opacity-70"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <Sparkles className="h-3 w-3" aria-hidden />}
+          {busy ? "Wren is thinking" : (note ?? "Improve this line")}
+        </button>
+      )}
+    </div>
+  );
+}
 
 /**
  * The resume exactly as it would be sent, and the place where it is edited.
@@ -19,8 +150,11 @@ export function ResumeDocument({
   onEdit,
   onContactEdit,
   onLive,
+  hover = {},
 }: {
   r: BuiltResume;
+  /** Suggestions that appear when a line is pointed at. Leave out for a plain editable page. */
+  hover?: Hover;
   highlight?: boolean;
   onEdit: (fieldId: string, value: string) => void;
   onContactEdit: (field: "name" | "email" | "phone" | "location", value: string) => void;
@@ -65,6 +199,7 @@ export function ResumeDocument({
       </div>
 
       <H>SUMMARY</H>
+      <Suggestable field="summary" hover={hover}>
       <EditableText
         as="p"
         multiline
@@ -76,6 +211,7 @@ export function ResumeDocument({
         onCommit={(v) => onEdit("summary", v)}
         className={cn("block", marks("summary"))}
       />
+      </Suggestable>
 
       <H>EXPERIENCE</H>
       {r.roles.map((role) => (
@@ -97,7 +233,9 @@ export function ResumeDocument({
           <ul className="mt-1 list-disc space-y-0.5 pl-5">
             {role.bullets.map((b) => (
               <li key={b.id}>
-                <EditableText multiline fieldId={b.id} onLive={live(b.id)} value={b.text} label={`Line under ${role.title}`} onCommit={(v) => onEdit(b.id, v)} className={cn("block", marks(b.id))} />
+                <Suggestable field={b.id} hover={hover}>
+                  <EditableText multiline fieldId={b.id} onLive={live(b.id)} value={b.text} label={`Line under ${role.title}`} onCommit={(v) => onEdit(b.id, v)} className={cn("block", marks(b.id))} />
+                </Suggestable>
               </li>
             ))}
           </ul>
@@ -126,6 +264,7 @@ export function ResumeDocument({
       )}
 
       <H>SKILLS</H>
+      <Suggestable field="skills" hover={hover}>
       <EditableText
         as="p"
         multiline
@@ -137,6 +276,7 @@ export function ResumeDocument({
         onCommit={(v) => onEdit("skills", v)}
         className={cn("block", marks("skills"))}
       />
+      </Suggestable>
     </div>
   );
 }

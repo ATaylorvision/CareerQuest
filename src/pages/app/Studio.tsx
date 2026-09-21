@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, CheckCheck, ClipboardPaste, Download, FileDown, Languages, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCheck, ClipboardPaste, Download, FileDown, Languages, LayoutTemplate, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
 import { AiWorking, Card, PageHeader, Segmented, SkeletonLines } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { ResumeDocument } from "@/components/studio/ResumeDocument";
 import { ChangeCard, GapsPanel, TranslatorPanel, VersionsPanel } from "@/components/studio/panels";
 import { AtsScorePanel, KeywordPanel } from "@/components/studio/AtsPanels";
 import { WrenPanel } from "@/components/studio/WrenPanel";
+import type { LineSuggestion } from "@/components/studio/ResumeDocument";
+import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
 import { TemplatePicker } from "@/components/TemplatePicker";
 import { ImportJobDialog } from "@/components/ImportJobDialog";
 import { useStore } from "@/store/AppStore";
@@ -221,6 +223,50 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
     }),
     [built],
   );
+
+  // One list of what Wren has proposed. The chat and the page both read it.
+  const store = useSuggestions((sg: Suggestion) => (sg.kind === "add" ? wrenAdd(sg.roleId, sg.after) : wrenReplace(sg.field, sg.after)));
+
+  const currentText = (field: string) =>
+    field === "summary" ? built.summary : field === "skills" ? built.skills.join(", ") : built.roles.flatMap((r) => r.bullets).find((b) => b.id === field)?.text;
+
+  // What shows when a line is pointed at: Wren's own proposals first, then the
+  // tailoring suggestions. Anything that no longer matches the line, because it
+  // was edited since, is left out rather than offered against text that is gone.
+  const hoverSuggestions = useMemo(() => {
+    const out: Record<string, LineSuggestion> = {};
+    for (const c of changes) {
+      if (decisions[c.id] || c.sourceId === "certs" || c.original === c.tailored) continue;
+      const now = currentText(c.sourceId);
+      if (now === undefined || edits[c.sourceId] !== undefined) continue;
+      out[c.sourceId] = { id: `tailor:${c.id}`, before: now, after: c.tailored, why: c.reason };
+    }
+    for (const sg of Object.values(store.items)) {
+      if (sg.kind !== "replace" || sg.status !== "pending") continue;
+      if (currentText(sg.field) !== sg.before) continue;
+      out[sg.field] = { id: sg.id, before: sg.before, after: sg.after, why: sg.why };
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [changes, decisions, edits, store.items, built]);
+
+  const useSuggestion = (id: string) => (id.startsWith("tailor:") ? decide(id.slice(7), "accepted") : store.use(id));
+  const skipSuggestion = (id: string) => (id.startsWith("tailor:") ? decide(id.slice(7), "rejected") : store.skip(id));
+
+  /** Asks Wren for a rewrite of one line, from the page. Resolves to false if there was nothing worth changing. */
+  const improveLine = async (field: string) => {
+    const which = field === "summary" ? "my summary" : field === "skills" ? "my skills list" : `the line with id ${field}`;
+    const out = await api<{ proposals: { id: string; kind: string; field: string; roleId: string; before: string; after: string; why: string }[] }>("studio", {
+      action: "agent",
+      jobId: job.id,
+      message: `Rewrite only ${which} so it is stronger and fits this job. Keep every fact and number exactly as they are, and do not touch anything else.`,
+      history: [],
+      resume: snapshot,
+    });
+    const mine = out.proposals.filter((p) => p.kind === "replace" && p.field === field);
+    if (mine.length) store.register(mine.map((p) => ({ ...p, kind: "replace" as const, id: `line:${Date.now().toString(36)}:${p.id}` })));
+    return mine.length > 0;
+  };
   const addSkill = (term: string) => {
     editField("skills", [...built.skills, term].join(", "));
     toast.success(`Added "${term}" to your skills`);
@@ -419,21 +465,22 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           {/* ---------------- the document ---------------- */}
           <div className="min-w-0 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-              <p>
-                <PenLine className="mr-1.5 inline h-4 w-4" aria-hidden />
-                Click any line to rewrite it. Empty a line to remove it.
-              </p>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="xs" onClick={() => setShowLayouts((v) => !v)}>
-                  {showLayouts ? "Hide layouts" : "Change layout"}
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2.5">
+              <Button size="sm" variant="outline" disabled={working} onClick={() => (isAnalyzed ? (pending > 0 ? acceptAll() : undefined) : void startTailor())}>
+                <Sparkles /> {isAnalyzed ? (pending > 0 ? `Use all ${pending} suggestions` : "Suggestions reviewed") : "Auto improve"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowLayouts((v) => !v)}>
+                <LayoutTemplate /> {showLayouts ? "Hide layouts" : "Template"}
+              </Button>
+              {Object.keys(edits).length > 0 && (
+                <Button size="sm" variant="ghost" onClick={revertEdits}>
+                  <RotateCcw /> Undo my edits
                 </Button>
-                {Object.keys(edits).length > 0 && (
-                  <Button variant="ghost" size="xs" onClick={revertEdits}>
-                    <RotateCcw /> Undo my edits
-                  </Button>
-                )}
-              </div>
+              )}
+              <p className="ml-auto hidden text-xs text-muted-foreground md:block">
+                <PenLine className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                Point at a line to see Wren's suggestion. Click a line to edit it.
+              </p>
             </div>
 
             {showLayouts && (
@@ -453,7 +500,13 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
               </div>
             )}
 
-            <ResumeDocument r={built} onEdit={editField} onContactEdit={editContact} onLive={onLive} />
+            <ResumeDocument
+              r={built}
+              onEdit={editField}
+              onContactEdit={editContact}
+              onLive={onLive}
+              hover={{ suggestions: hoverSuggestions, onUse: useSuggestion, onSkip: skipSuggestion, onImprove: live ? improveLine : undefined }}
+            />
 
             <div className="z-10 flex flex-col gap-3 rounded-xl border bg-background/95 p-4 shadow-lift backdrop-blur sm:flex-row sm:items-center xl:sticky xl:bottom-4">
               <div className="flex-1 text-sm">
@@ -508,7 +561,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
                 <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
                   <Sparkles className="h-4 w-4 text-primary" aria-hidden /> Wren, your resume editor
                 </h2>
-                <WrenPanel key={job.id} jobId={job.id} snapshot={snapshot} onReplace={wrenReplace} onAdd={wrenAdd} />
+                <WrenPanel key={job.id} jobId={job.id} snapshot={snapshot} onReplace={wrenReplace} onAdd={wrenAdd} store={store} />
               </Card>
             )}
 

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { api, ApiError } from "@/live/api";
 import { wordDiff } from "@/lib/diff";
 import { cn } from "@/lib/utils";
+import type { SuggestionStore } from "@/hooks/useSuggestions";
 
 /** The resume as it is on the page right now, which is what Wren works from. */
 export interface PageSnapshot {
@@ -25,13 +26,12 @@ interface Proposal {
   why: string;
 }
 
-type Status = "pending" | "applied" | "skipped";
-
 interface Message {
   id: number;
   from: "you" | "wren";
   text: string;
-  proposals?: (Proposal & { status: Status })[];
+  /** Ids in the shared suggestion list, so the page and the chat always agree. */
+  proposals: string[];
 }
 
 interface Props {
@@ -41,6 +41,7 @@ interface Props {
   onReplace: (field: string, text: string) => () => void;
   /** Adds a line under a role. Returns a function that takes it out again. */
   onAdd: (roleId: string, text: string) => () => void;
+  store: SuggestionStore;
 }
 
 const STARTERS = ["Make my summary fit this job", "Strengthen my weakest lines", "Put the most relevant skills first"];
@@ -76,7 +77,7 @@ function Diff({ before, after }: { before: string; after: string }) {
   );
 }
 
-function fieldLabel(p: Proposal, snap: PageSnapshot) {
+function fieldLabel(p: { kind: string; field: string; roleId: string }, snap: PageSnapshot) {
   if (p.kind === "add") {
     const r = snap.roles.find((x) => x.id === p.roleId);
     return `New line under ${r ? r.title : "your experience"}`;
@@ -89,12 +90,11 @@ function fieldLabel(p: Proposal, snap: PageSnapshot) {
 
 /* ---------------- ask Wren ---------------- */
 
-function AskWren({ jobId, snapshot, onReplace, onAdd }: Props) {
+function AskWren({ jobId, snapshot, store }: { jobId: string; snapshot: PageSnapshot; store: SuggestionStore }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const undo = useRef(new Map<string, () => void>());
   const idRef = useRef(1);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -108,11 +108,14 @@ function AskWren({ jobId, snapshot, onReplace, onAdd }: Props) {
     setError(null);
     setInput("");
     const history = messages.slice(-6).map((m) => ({ from: m.from, text: m.text }));
-    setMessages((m) => [...m, { id: idRef.current++, from: "you", text: message }]);
+    setMessages((m) => [...m, { id: idRef.current++, from: "you", text: message, proposals: [] }]);
     setBusy(true);
     try {
       const out = await api<{ reply: string; proposals: Proposal[] }>("studio", { action: "agent", jobId, message, history, resume: snapshot });
-      setMessages((m) => [...m, { id: idRef.current++, from: "wren", text: out.reply, proposals: out.proposals.map((p) => ({ ...p, status: "pending" as Status })) }]);
+      const mid = idRef.current++;
+      const ids = out.proposals.map((p) => ({ ...p, id: `${mid}:${p.id}` }));
+      store.register(ids);
+      setMessages((m) => [...m, { id: mid, from: "wren", text: out.reply, proposals: ids.map((p) => p.id) }]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Something went wrong. Please try again.");
     } finally {
@@ -120,25 +123,13 @@ function AskWren({ jobId, snapshot, onReplace, onAdd }: Props) {
     }
   };
 
-  const setStatus = (mid: number, pid: string, status: Status) =>
-    setMessages((all) => all.map((m) => (m.id === mid ? { ...m, proposals: m.proposals?.map((p) => (p.id === pid ? { ...p, status } : p)) } : m)));
-
-  const apply = (mid: number, p: Proposal) => {
-    const back = p.kind === "add" ? onAdd(p.roleId, p.after) : onReplace(p.field, p.after);
-    undo.current.set(`${mid}:${p.id}`, back);
-    setStatus(mid, p.id, "applied");
-  };
-  const revert = (mid: number, p: Proposal) => {
-    undo.current.get(`${mid}:${p.id}`)?.();
-    undo.current.delete(`${mid}:${p.id}`);
-    setStatus(mid, p.id, "pending");
-  };
-
   return (
     <div>
       {messages.length === 0 && (
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Tell Wren what to change. Every edit comes as a card you accept or skip, and nothing is added that you have not said or that is not already on your resume.</p>
+          <p className="text-sm text-muted-foreground">
+            Tell Wren what to change. You can also hover any line on your resume to see Wren's suggestion for it. Nothing is added that you have not said or that is not already on your resume.
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {STARTERS.map((s) => (
               <button key={s} type="button" onClick={() => void send(s)} className="rounded-full border bg-background px-2.5 py-1 text-xs hover:border-primary/50 hover:bg-accent/40">
@@ -158,51 +149,55 @@ function AskWren({ jobId, snapshot, onReplace, onAdd }: Props) {
               ) : (
                 <div className="space-y-2.5">
                   <p className="text-sm">{m.text}</p>
-                  {m.proposals?.map((p) => (
-                    <div key={p.id} className={cn("rounded-xl border bg-card p-3", p.status === "applied" && "border-success-border", p.status === "skipped" && "opacity-60")}>
-                      <div className="mb-2 text-xs font-semibold text-foreground/80">{fieldLabel(p, snapshot)}</div>
-                      {p.kind === "add" ? (
-                        <div className="rounded-lg bg-success-soft/60 p-2.5 text-[13px] leading-relaxed">{p.after}</div>
-                      ) : p.field === "skills" ? (
-                        <div className="space-y-1.5 text-[13px] leading-relaxed">
-                          <div className="rounded-lg bg-muted/50 p-2.5">{p.before}</div>
-                          <div className="rounded-lg bg-success-soft/60 p-2.5">{p.after}</div>
-                        </div>
-                      ) : (
-                        <Diff before={p.before} after={p.after} />
-                      )}
-                      <p className="mt-2 text-xs text-muted-foreground">{p.why}</p>
-                      <div className="mt-2.5 flex gap-1.5">
-                        {p.status === "pending" && (
-                          <>
-                            <Button size="xs" onClick={() => apply(m.id, p)}>
-                              <Check /> Use it
-                            </Button>
-                            <Button size="xs" variant="outline" onClick={() => setStatus(m.id, p.id, "skipped")}>
-                              <X /> Skip
-                            </Button>
-                          </>
+                  {m.proposals.map((id) => {
+                    const p = store.items[id];
+                    if (!p) return null;
+                    return (
+                      <div key={id} className={cn("rounded-xl border bg-card p-3", p.status === "applied" && "border-success-border", p.status === "skipped" && "opacity-60")}>
+                        <div className="mb-2 text-xs font-semibold text-foreground/80">{fieldLabel(p, snapshot)}</div>
+                        {p.kind === "add" ? (
+                          <div className="rounded-lg bg-success-soft/60 p-2.5 text-[13px] leading-relaxed">{p.after}</div>
+                        ) : p.field === "skills" ? (
+                          <div className="space-y-1.5 text-[13px] leading-relaxed">
+                            <div className="rounded-lg bg-muted/50 p-2.5">{p.before}</div>
+                            <div className="rounded-lg bg-success-soft/60 p-2.5">{p.after}</div>
+                          </div>
+                        ) : (
+                          <Diff before={p.before} after={p.after} />
                         )}
-                        {p.status === "applied" && (
-                          <>
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
-                              <Check className="h-3.5 w-3.5" /> On your resume
-                            </span>
-                            {undo.current.has(`${m.id}:${p.id}`) && (
-                              <Button size="xs" variant="ghost" onClick={() => revert(m.id, p)}>
-                                <Undo2 /> Undo
+                        <p className="mt-2 text-xs text-muted-foreground">{p.why}</p>
+                        <div className="mt-2.5 flex gap-1.5">
+                          {p.status === "pending" && (
+                            <>
+                              <Button size="xs" onClick={() => store.use(id)}>
+                                <Check /> Use it
                               </Button>
-                            )}
-                          </>
-                        )}
-                        {p.status === "skipped" && (
-                          <Button size="xs" variant="ghost" onClick={() => setStatus(m.id, p.id, "pending")}>
-                            <Undo2 /> Reconsider
-                          </Button>
-                        )}
+                              <Button size="xs" variant="outline" onClick={() => store.skip(id)}>
+                                <X /> Skip
+                              </Button>
+                            </>
+                          )}
+                          {p.status === "applied" && (
+                            <>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+                                <Check className="h-3.5 w-3.5" /> On your resume
+                              </span>
+                              {store.canUndo(id) && (
+                                <Button size="xs" variant="ghost" onClick={() => store.undo(id)}>
+                                  <Undo2 /> Undo
+                                </Button>
+                              )}
+                            </>
+                          )}
+                          {p.status === "skipped" && (
+                            <Button size="xs" variant="ghost" onClick={() => store.undo(id)}>
+                              <Undo2 /> Reconsider
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -342,7 +337,7 @@ export function WrenPanel(props: Props) {
       <Segmented<"ask" | "line"> value={tab} onChange={setTab} options={[{ value: "ask", label: "Ask Wren" }, { value: "line", label: "Write a line" }]} className="mb-3" />
       {/* Both stay mounted, so switching tabs never loses the conversation. */}
       <div hidden={tab !== "ask"}>
-        <AskWren {...props} />
+        <AskWren jobId={props.jobId} snapshot={props.snapshot} store={props.store} />
       </div>
       <div hidden={tab !== "line"}>
         <WriteLine {...props} />
