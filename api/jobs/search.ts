@@ -3,6 +3,7 @@ import { adzunaSearch, jsearchSearch, looksEvergreen, looksLikeAgency, remoteTyp
 import { checkCompanySite, type SiteCheck } from "../_lib/ats.js";
 import { computeLegitimacy, type LegitSignals } from "../../src/lib/legit.js";
 import { geocodeCity, geocodeUS, haversineMiles, type Point } from "../_lib/geo.js";
+import { getItems, getRun, hasApify, LIMITS, mapLinkedIn, startLinkedInRun } from "../_lib/apify.js";
 
 const MAX_JOBS = 30;
 const DAY = 86_400_000;
@@ -23,7 +24,8 @@ async function pool<T, R>(items: T[], size: number, fn: (x: T) => Promise<R>): P
   return out;
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// Accents are dropped so "Hermès" and "Hermes" are the same employer when we look for duplicates.
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 /** The city part of "Austin, TX". */
 const cityOf = (s: string) => norm(s).split(/\s+/).slice(0, 2).join(" ");
@@ -48,8 +50,9 @@ const tag = (p: Promise<RawJob[]>, scoped: boolean): Promise<Found[]> =>
   p.then((rows) => rows.map((r) => ({ ...r, scoped }))).catch((): Found[] => []);
 
 export default route(async (req, _res, user) => {
-  await quota(user, "search", 15, "job searches");
-  const { extraQuery } = body<{ extraQuery?: string }>(req);
+  const { extraQuery, action, runId } = body<{ extraQuery?: string; action?: string; runId?: string }>(req);
+  const polling = action === "linkedinPoll";
+  if (!polling && action !== "linkedinStart") await quota(user, "search", 15, "job searches");
   const db = admin();
 
   const { data: profile } = await db
@@ -116,19 +119,63 @@ export default route(async (req, _res, user) => {
     await pool(fix, 10, (x) => Promise.resolve(db.from("job_matches").update({ distance_miles: x.d }).eq("user_id", user.id).eq("job_id", x.job_id)).then(() => undefined));
   }
 
+  // LinkedIn is a second, slower search that runs beside the first. It is off until staff switch it on.
+  const { data: setting } = await db.from("app_settings").select("value").eq("key", "linkedin_enabled").maybeSingle();
+  const linkedinOn = hasApify() && setting?.value === true;
+
+  if (action === "linkedinStart") {
+    const none = (note: string) => ({ started: false, note });
+    if (!linkedinOn) return none("LinkedIn search is not switched on.");
+    const place = home || areas[0];
+    if (!place) return none("Add your home base in Settings so we can search LinkedIn near you.");
+    await quota(user, "linkedin", LIMITS.perUserPerDay, "LinkedIn searches");
+    const dayStart = new Date();
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const { count } = await db.from("linkedin_runs").select("id", { count: "exact", head: true }).gte("started_at", dayStart.toISOString());
+    if ((count ?? 0) >= LIMITS.globalPerDay) return none("LinkedIn search is resting for today. Your other results are unaffected.");
+    const run = await startLinkedInRun({ keywords: roles[0], location: place, distance: radius });
+    await db.from("linkedin_runs").insert({ user_id: user.id, run_id: run.id });
+    return { started: true, runId: run.id };
+  }
+
+  const empty = (note?: string) => ({ ids: [] as string[], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange: 0, status: "done", ...(note ? { note } : {}) });
+  let linkedinRaw: Found[] | null = null;
+  let pollMeta: { items: number; cost: number | null } | null = null;
+  if (polling) {
+    if (!runId) return empty("Which search?");
+    const { data: row } = await db.from("linkedin_runs").select("run_id, status, ids").eq("run_id", runId).eq("user_id", user.id).maybeSingle();
+    if (!row) return empty("We could not find that search.");
+    if (row.status === "done") return { ...empty(), ids: (row.ids as string[]) ?? [], total: ((row.ids as string[]) ?? []).length };
+    const run = await getRun(runId);
+    if (run.status === "READY" || run.status === "RUNNING") return { status: "running" };
+    if (run.status !== "SUCCEEDED") {
+      await db.from("linkedin_runs").update({ status: "done", ids: [], items: 0, cost_usd: run.usageTotalUsd ?? null, finished_at: new Date().toISOString() }).eq("run_id", runId);
+      return empty("LinkedIn did not return results this time. Your other results are unaffected.");
+    }
+    const items = await getItems(run.defaultDatasetId);
+    linkedinRaw = items.map(mapLinkedIn).filter((r): r is NonNullable<typeof r> => !!r).map((r) => ({ ...r, scoped: true }));
+    pollMeta = { items: items.length, cost: run.usageTotalUsd ?? null };
+  }
+  /** Records how a LinkedIn run ended, so its spend and results are on file. */
+  const settle = async (ids: string[]) => {
+    if (polling && pollMeta) await db.from("linkedin_runs").update({ status: "done", ids, items: pollMeta.items, cost_usd: pollMeta.cost, finished_at: new Date().toISOString() }).eq("run_id", runId!);
+  };
+
   // 1. Pull real listings, each one scoped to a place the person named.
   const searchRemote = remoteOnly || listedRemote || (openToRemote && areas.length === 0);
   const queries: Promise<Found[]>[] = [];
-  for (const role of roles) {
-    if (!remoteOnly) for (const loc of areas) queries.push(tag(adzunaSearch(role, loc, { distanceMiles: radius }), true));
-    if (searchRemote) queries.push(tag(adzunaSearch(role, "", { remote: true }), false));
+  if (!polling) {
+    for (const role of roles) {
+      if (!remoteOnly) for (const loc of areas) queries.push(tag(adzunaSearch(role, loc, { distanceMiles: radius }), true));
+      if (searchRemote) queries.push(tag(adzunaSearch(role, "", { remote: true }), false));
+    }
+    if (extraQuery) {
+      if (areas.length && !remoteOnly) queries.push(tag(adzunaSearch(extraQuery, areas[0], { distanceMiles: radius }), true));
+      else queries.push(tag(adzunaSearch(extraQuery, "", { remote: searchRemote }), false));
+    }
+    queries.push(tag(jsearchSearch(`${roles[0]} in ${areas[0] || "United States"}`), false));
   }
-  if (extraQuery) {
-    if (areas.length && !remoteOnly) queries.push(tag(adzunaSearch(extraQuery, areas[0], { distanceMiles: radius }), true));
-    else queries.push(tag(adzunaSearch(extraQuery, "", { remote: searchRemote }), false));
-  }
-  queries.push(tag(jsearchSearch(`${roles[0]} in ${areas[0] || "United States"}`), false));
-  const raw = (await Promise.all(queries)).flat();
+  const raw = linkedinRaw ?? (await Promise.all(queries)).flat();
 
   // The job boards send no coordinates, so place each listing from its city and state.
   {
@@ -177,6 +224,14 @@ export default route(async (req, _res, user) => {
 
   // 2. De-duplicate, drop anything out of reach, newest first.
   const seen = new Set<string>();
+  if (polling) {
+    // The same job is often on LinkedIn and on a board we already read. Show it once.
+    const { data: have } = await db.from("job_matches").select("jobs(company, title)").eq("user_id", user.id).limit(400);
+    for (const m of have ?? []) {
+      const j = (Array.isArray(m.jobs) ? m.jobs[0] : m.jobs) as { company: string; title: string } | null;
+      if (j) seen.add(`${norm(j.company)}|${norm(j.title)}`);
+    }
+  }
   const list: Found[] = [];
   let outOfRange = 0;
   for (const r of raw.sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? ""))) {
@@ -197,7 +252,8 @@ export default route(async (req, _res, user) => {
     const note = outOfRange
       ? `Every listing we found sits outside your ${radius} mile range${home ? ` from ${home}` : ""}. Widen the range in Settings, or add remote.`
       : "No listings came back. Try a broader role title or location.";
-    return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange, note };
+    await settle([]);
+    return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange, note, ...(polling ? { status: "done" } : {}) };
   }
 
   // 3. What we already know about these listings.
@@ -282,6 +338,7 @@ export default route(async (req, _res, user) => {
     throw new Error("Could not save listings");
   }
 
+  await settle(rows.map((r) => r.id));
   return {
     ids: rows.map((r) => r.id),
     total: rows.length,
@@ -289,5 +346,7 @@ export default route(async (req, _res, user) => {
     agencies: rows.filter((r) => !r.employer_posted).length,
     ghostRisk: rows.filter((r) => r.legit.badge === "ghost").length,
     outOfRange,
+    // Tells the browser whether to start the LinkedIn search that runs beside this one.
+    ...(polling ? { status: "done" } : { linkedin: linkedinOn }),
   };
 });

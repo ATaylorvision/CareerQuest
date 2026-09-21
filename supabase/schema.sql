@@ -552,3 +552,32 @@ begin
     update public.job_matches set kept = true;
   end if;
 end $$;
+
+-- ---------------------------------------------------------------
+-- LinkedIn search through Apify. A switch that staff can flip without a
+-- deploy, and a record of every run so spend and daily limits are enforced
+-- from real numbers. Both are written and read only by our server.
+-- ---------------------------------------------------------------
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null default 'null',
+  updated_at timestamptz not null default now()
+);
+alter table public.app_settings enable row level security;
+revoke all on public.app_settings from anon, authenticated;
+insert into public.app_settings (key, value) values ('linkedin_enabled', 'false') on conflict (key) do nothing;
+
+create table if not exists public.linkedin_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  run_id text not null unique,
+  status text not null default 'running',
+  items integer,
+  cost_usd numeric,
+  ids jsonb,
+  started_at timestamptz not null default now(),
+  finished_at timestamptz
+);
+create index if not exists linkedin_runs_started_idx on public.linkedin_runs (started_at desc);
+alter table public.linkedin_runs enable row level security;
+revoke all on public.linkedin_runs from anon, authenticated;

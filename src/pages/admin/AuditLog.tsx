@@ -17,10 +17,12 @@ const ACTION_LABEL: Record<string, { label: string; tone: string }> = {
   "admin.revoke": { label: "Removed admin access", tone: "bg-warning/15 text-warning" },
   "onboarding.reset": { label: "Reset onboarding", tone: "bg-muted text-muted-foreground" },
   "account.delete": { label: "Deleted an account", tone: "bg-danger/15 text-danger" },
+  "setting.change": { label: "Changed a setting", tone: "bg-primary-soft text-primary" },
 };
 
 function describe(r: Row) {
   if (r.action === "plan.change" && r.detail) return `${String(r.detail.from)} to ${String(r.detail.to)}`;
+  if (r.action === "setting.change" && r.detail) return r.detail.to ? "Switched on" : "Switched off";
   return "";
 }
 

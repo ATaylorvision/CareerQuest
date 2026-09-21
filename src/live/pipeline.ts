@@ -24,6 +24,42 @@ interface SearchResult {
   /** Listings we found and then dropped for sitting outside the commute radius. */
   outOfRange?: number;
   note?: string;
+  /** True when staff have switched LinkedIn search on, so a second search should run beside this one. */
+  linkedin?: boolean;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Gives up on a call that is taking too long, so one stuck request cannot hold up the whole page. */
+const within = <T,>(p: Promise<T>, ms: number): Promise<T | null> => Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+
+/**
+ * LinkedIn is a two step job: start the scraper, then come back for what it found. The
+ * scraper takes a while, so it is started first and collected last, and scoring the
+ * other results happens while it works. Neither step ever throws: if LinkedIn is slow,
+ * off, or out of its daily allowance, the person simply keeps the results they have.
+ */
+async function startLinkedIn(): Promise<string | null> {
+  try {
+    const started = await api<{ started: boolean; runId?: string }>("jobs/search", { action: "linkedinStart" });
+    return started.started && started.runId ? started.runId : null;
+  } catch {
+    return null;
+  }
+}
+
+async function collectLinkedIn(runId: string | null): Promise<string[]> {
+  if (!runId) return [];
+  try {
+    for (let i = 0; i < 25; i++) {
+      const r = await api<{ status?: string; ids?: string[] }>("jobs/search", { action: "linkedinPoll", runId });
+      if (r.status !== "running") return r.ids ?? [];
+      await sleep(4000);
+    }
+  } catch {
+    /* a bonus, never a reason for the search to fail */
+  }
+  return [];
 }
 
 /** Loads the signed in user's matches, joined with the shared listings, as app Job objects. */
@@ -51,17 +87,19 @@ export async function runPipeline(opts: { onProgress: (p: Progress) => void; onJ
   onProgress({ stage: "search", message: "Searching live listings and checking each company's own careers page" });
   const found = await api<SearchResult>("jobs/search");
   onProgress({ stage: "search", message: `Found ${found.total} real listings`, found: found.total, verified: found.verified, agencies: found.agencies, ghostRisk: found.ghostRisk });
-  if (found.total === 0) {
+  if (found.total === 0 && !found.linkedin) {
     onProgress({ stage: "done", message: found.note ?? "No listings came back." });
     return found;
   }
 
   const counts = { found: found.total, verified: found.verified, agencies: found.agencies, ghostRisk: found.ghostRisk };
+  // Started now so it works while the first results are being scored.
+  const linkedinRun = found.linkedin ? startLinkedIn() : Promise.resolve(null);
   onProgress({ stage: "score", message: "Scoring each one against your resume", ...counts, scored: 0 });
   let scored = 0;
   await Promise.all(
     chunk(found.ids, 8).map(async (ids) => {
-      await api("jobs/match", { ids, mode: "score" });
+      await within(api("jobs/match", { ids, mode: "score" }).catch(() => null), 75_000);
       scored += ids.length;
       onProgress({ stage: "score", message: `Scored ${scored} of ${found.total}`, ...counts, scored });
     }),
@@ -70,14 +108,28 @@ export async function runPipeline(opts: { onProgress: (p: Progress) => void; onJ
   let jobs = await loadJobs();
   onJobs(jobs);
 
+  // LinkedIn runs after the first results are already on screen, so nobody waits on it.
+  let fromLinkedIn: string[] = [];
+  if (found.linkedin) {
+    onProgress({ stage: "search", message: "Also checking LinkedIn", ...counts, scored });
+    fromLinkedIn = await collectLinkedIn(await linkedinRun);
+    if (fromLinkedIn.length) {
+      onProgress({ stage: "score", message: `Scoring ${fromLinkedIn.length} more from LinkedIn`, ...counts, scored });
+      await Promise.all(chunk(fromLinkedIn, 8).map((ids) => within(api("jobs/match", { ids, mode: "score" }).catch(() => null), 75_000)));
+      jobs = await loadJobs();
+      onJobs(jobs);
+    }
+  }
+
   onProgress({ stage: "detail", message: "Translating your experience for the best matches", ...counts, scored });
-  const top = jobs.filter((j) => found.ids.includes(j.id)).slice(0, enrichTop);
+  const seenIds = [...found.ids, ...fromLinkedIn];
+  const top = jobs.filter((j) => seenIds.includes(j.id)).slice(0, enrichTop);
   await Promise.all(top.map((j) => api("jobs/match", { ids: [j.id], mode: "detail" }).catch(() => null)));
 
   jobs = await loadJobs();
   onJobs(jobs);
   onProgress({ stage: "done", message: "Done", ...counts, scored });
-  return found;
+  return { ...found, total: found.total + fromLinkedIn.length };
 }
 
 /** Runs the full analysis for one job (used when a job is opened before it was analyzed). */

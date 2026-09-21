@@ -127,7 +127,7 @@ export function rowToJob(row: JobRow, match: MatchRow): Job {
     target: (t.field as TargetField) ?? "supply",
     applyMethod: "manual",
     manualReason: NOT_AUTOMATED,
-    source: row.source === "imported" ? "Added by you" : confirmed ? `${row.company} careers page` : row.employer_posted === false ? "Staffing agency listing" : "Job board listing",
+    source: row.source === "imported" ? "Added by you" : row.source === "linkedin" && !confirmed ? "LinkedIn listing" : confirmed ? `${row.company} careers page` : row.employer_posted === false ? "Staffing agency listing" : "Job board listing",
     imported: row.source === "imported",
     signals,
     legit: row.legit ?? { score: 50, badge: "active", factors: [] },

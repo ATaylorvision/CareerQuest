@@ -1,7 +1,7 @@
 // Real job listings from Adzuna and (when subscribed) JSearch.
 
 export interface RawJob {
-  source: "adzuna" | "jsearch";
+  source: "adzuna" | "jsearch" | "linkedin";
   external_id: string;
   title: string;
   company: string;

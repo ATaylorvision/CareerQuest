@@ -13,7 +13,7 @@ config({ path: ".env.local", quiet: true });
 // Everything the deployed app reads. SUPABASE_DB_URL is left out on purpose:
 // only the local migration script uses it, so it never needs to leave this machine.
 const REQUIRED = ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "ANTHROPIC_API_KEY", "ADZUNA_APP_ID", "ADZUNA_APP_KEY"];
-const OPTIONAL = ["RAPIDAPI_KEY", "RESEND_API_KEY", "ADMIN_EMAILS", "STRIPE_SECRET_KEY", "VITE_STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"];
+const OPTIONAL = ["RAPIDAPI_KEY", "RESEND_API_KEY", "ADMIN_EMAILS", "STRIPE_SECRET_KEY", "VITE_STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "APIFY_TOKEN"];
 const TARGETS = ["production", "preview", "development"];
 
 const vercel = (args) => spawnSync("npx", ["vercel", ...args], { encoding: "utf8", shell: process.platform === "win32" });

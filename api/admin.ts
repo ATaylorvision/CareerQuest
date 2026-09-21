@@ -1,5 +1,6 @@
 import { HttpError, admin, body, route } from "./_lib/http.js";
 import { logAction, requireAdmin, type AdminUser } from "./_lib/admin.js";
+import { LIMITS } from "./_lib/apify.js";
 
 /**
  * The whole admin panel is this one endpoint, switched on `action`.
@@ -210,6 +211,7 @@ async function health() {
     jsearch: has("RAPIDAPI_KEY"),
     stripe: has("STRIPE_SECRET_KEY"),
     resend: has("RESEND_API_KEY"),
+    apify: has("APIFY_TOKEN"),
   };
   const skip = (name: string): Check => ({ name, ok: false, status: 0, ms: 0, skipped: true });
   const timeout = () => AbortSignal.timeout(8000);
@@ -344,6 +346,42 @@ async function deleteUser(actor: AdminUser, userId: string, confirm: string) {
   return { deleted: true };
 }
 
+/** The LinkedIn switch, what it has cost, and the latest runs. */
+async function linkedinStatus() {
+  const db = admin();
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const [{ data: s }, { data: month }, { data: recent }] = await Promise.all([
+    db.from("app_settings").select("value").eq("key", "linkedin_enabled").maybeSingle(),
+    db.from("linkedin_runs").select("cost_usd, started_at").gte("started_at", monthStart.toISOString()),
+    db.from("linkedin_runs").select("run_id, status, items, cost_usd, started_at, user_id").order("started_at", { ascending: false }).limit(8),
+  ]);
+  const sum = (rows: { cost_usd: number | null }[]) => rows.reduce((n, r) => n + Number(r.cost_usd ?? 0), 0);
+  const today = (month ?? []).filter((r) => new Date(r.started_at as string) >= dayStart);
+  const ids = [...new Set((recent ?? []).map((r) => r.user_id as string))];
+  const { data: people } = ids.length ? await db.from("profiles").select("id, email").in("id", ids) : { data: [] };
+  const email = new Map((people ?? []).map((p) => [p.id as string, p.email as string]));
+  return {
+    enabled: s?.value === true,
+    configured: !!process.env.APIFY_TOKEN?.trim(),
+    limits: { perUserPerDay: LIMITS.perUserPerDay, globalPerDay: LIMITS.globalPerDay, maxItems: LIMITS.maxItems, maxChargeUsd: LIMITS.maxChargeUsd },
+    runsToday: today.length,
+    spendToday: sum(today),
+    runsMonth: (month ?? []).length,
+    spendMonth: sum(month ?? []),
+    recent: (recent ?? []).map((r) => ({ runId: r.run_id, status: r.status, items: r.items, cost: r.cost_usd, at: r.started_at, who: email.get(r.user_id as string) ?? "" })),
+  };
+}
+
+async function setLinkedin(actor: AdminUser, on: boolean) {
+  if (on && !process.env.APIFY_TOKEN?.trim()) throw new HttpError(400, "There is no Apify token on the server yet.");
+  const { error } = await admin().from("app_settings").upsert({ key: "linkedin_enabled", value: on, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  if (error) throw new HttpError(500, "Could not save that.");
+  await logAction(actor, "setting.change", { id: "linkedin_enabled", label: "LinkedIn search", detail: { to: on } });
+  return linkedinStatus();
+}
+
 export default route(async (req) => {
   const actor = await requireAdmin(req);
   const p = body<Payload>(req);
@@ -366,6 +404,10 @@ export default route(async (req) => {
       return listApplications(page);
     case "health":
       return health();
+    case "linkedin":
+      return linkedinStatus();
+    case "setLinkedin":
+      return setLinkedin(actor, !!p.value);
     case "log":
       return auditLog(page);
     case "setTier":
