@@ -370,7 +370,7 @@ export default function Dashboard() {
               <Button
                 size="sm"
                 onClick={() => {
-                  if (!printResume(baseDoc, `${baseDoc.name.replace(/\s+/g, "_")}_Resume`, state.resume.templateId, state.profile.headline))
+                  if (!printResume(baseDoc, `${baseDoc.name.replace(/\s+/g, "_")}_Resume`, state.resume.templateId, state.profile.headline, state.resume.format))
                     toast.error("Your browser blocked the print window. Allow pop ups and try again.");
                 }}
               >

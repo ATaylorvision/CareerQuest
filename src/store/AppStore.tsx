@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { ResumeFormat } from "@/lib/resumeFormat";
 import { buildSeedApplications, type Application } from "@/data/applications";
 import { SEED_CONNECTIONS, type Connection } from "@/data/connections";
 import { SEED_CONVERSATIONS, type Conversation } from "@/data/copilot";
@@ -73,6 +74,8 @@ export interface AppState {
     added?: Record<string, Record<string, { id: string; text: string }[]>>;
     /** A full posting pasted in where the listing only gave an excerpt. Saved with the rest of the working state, so private to the account and capped in size. */
     postingText?: Record<string, string>;
+    /** Font, size, spacing and margins for the printed page. One choice for the account, so every version looks alike. */
+    format?: ResumeFormat;
     /** Name and contact details belong to the account, so every version shares them. */
     contact?: { name?: string; email?: string; phone?: string; location?: string };
   };

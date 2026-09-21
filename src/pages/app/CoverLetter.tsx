@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { BadgeCheck, Copy, Download, Eye, EyeOff, FileText, Link2, Printer, RefreshCw, Save, ShieldAlert } from "lucide-react";
+import { Copy, Download, Eye, EyeOff, FileText, Link2, Printer, RefreshCw, Save, ShieldAlert } from "lucide-react";
 import { Card, PageHeader, Segmented, SectionTitle, SkeletonLines } from "@/components/common";
-import { Pill, TruthModeBadge } from "@/components/status";
+import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -159,11 +159,6 @@ function greetingFor(job: Job, tone: Tone) {
   return tone === "formal" ? `Dear ${job.company.name} Hiring Team,` : tone === "direct" ? `Hello ${job.company.name} team,` : `Hi ${job.company.name} team,`;
 }
 
-function numberCheck(text: string, resumeText: string) {
-  const nums = Array.from(new Set((text.match(/\$?\d[\d,.]*[KkM%]?/g) ?? []).map((n) => n.replace(/[.,]+$/, ""))));
-  return nums.map((n) => ({ n, ok: resumeText.includes(n) }));
-}
-
 /** `embedded` drops the page header and the job picker, because the Studio owns both. */
 export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
   useDocTitle(embedded ? "Studio" : "Cover Letter Studio");
@@ -183,7 +178,6 @@ export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
   const [liveGreeting, setLiveGreeting] = useState("");
   const [failed, setFailed] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const resumeText = useMemo(() => [BASE_RESUME.summary, ...BASE_RESUME.roles.flatMap((r) => r.bullets.map((b) => b.text))].join(" "), [state.uploadedFileName]);
 
   useEffect(() => {
     setGapIds(job.gaps.filter((g) => g.severity !== "preferred").map((g) => g.id));
@@ -244,7 +238,6 @@ export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
     jobTitle: job.title,
     date: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
   };
-  const checks = numberCheck(letter, resumeText);
   const freeLeft = FREE_LIMITS.coverLetters - state.usage.coverLetters;
   const saved = state.letters.filter((l) => l.jobId === job.id);
 
@@ -283,7 +276,6 @@ export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
         <PageHeader
           title="Cover Letter Studio"
           sub="Built only from your resume. Every paragraph shows where it came from, and gaps are addressed plainly instead of hidden."
-          actions={<TruthModeBadge />}
         />
       )}
 
@@ -358,19 +350,6 @@ export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
             )}
           </section>
 
-          <Card>
-            <SectionTitle icon={BadgeCheck} sub="Every number in the letter must already be in your resume.">Truth check</SectionTitle>
-            <ul className="flex flex-wrap gap-1.5">
-              {checks.map((c) => (
-                <li key={c.n}>
-                  <Pill size="xs" tone={c.ok ? "success" : "danger"}>
-                    {c.ok ? "✓" : "✕"} <span className="num">{c.n}</span>
-                  </Pill>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-xs text-muted-foreground">{checks.every((c) => c.ok) ? `All ${checks.length} numbers match your resume.` : "A number does not match your resume. It will be removed before saving."}</p>
-          </Card>
         </div>
 
         <div className="min-w-0">
@@ -414,7 +393,7 @@ export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
                   size="xs"
                   variant="ghost"
                   onClick={() => {
-                    const html = renderLetterHtml(letterCtx, state.resume.letterTemplateId, `${state.profile.name} cover letter`);
+                    const html = renderLetterHtml(letterCtx, state.resume.letterTemplateId, `${state.profile.name} cover letter`, state.resume.format ? { ...state.resume.format, size: null } : undefined);
                     if (!printHtml(html)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
                   }}
                 >

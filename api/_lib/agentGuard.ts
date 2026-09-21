@@ -66,6 +66,34 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9+#. ]/g, " ").repla
 const splitSkills = (s: string) => s.split(/,\s*(?![^()]*\))/).map((x) => x.trim()).filter(Boolean);
 const significant = (s: string) => new Set(norm(s).split(" ").filter((w) => w.length >= 5));
 
+/**
+ * Words that make a job sound bigger than it was. A rewrite may keep one that
+ * is already on the page or that the person just said, and may not bring one in.
+ */
+const SCOPE =
+  /\b(?:store|company|organi[sz]ation|enterprise|department|region|district|nation|country|business|team|firm)[- ]?wide\b|\bacross (?:the |all |every |multiple |several |entire |our |its )?(?:stores?|company|organi[sz]ation|regions?|districts?|departments?|business(?:es)?|locations?|sites?|enterprise|teams?|markets?|states?|countr(?:y|ies)|network)\b|\bnationwide\b|\bglobal(?:ly)?\b|\bmulti[- ]?(?:site|location|state|region|unit|store)\b|\bentire\b|\benterprise\b|\bstrategic(?:ally)?\b|\bexecutive\b|\bcompany(?:’|')s\b/gi;
+
+/** A stretch of scope in `after` that neither `page` nor `said` already contains. */
+export function scopeStretch(after: string, page: string, said: string): string | null {
+  const known = norm(`${page} ${said}`);
+  for (const m of after.match(SCOPE) ?? []) if (!known.includes(norm(m))) return m;
+  return null;
+}
+
+/** Capitalised names (tools, employers, programs) that appear in `after` and nowhere the person has been. */
+export function newNames(after: string, page: string, said: string): string[] {
+  const known = norm(`${page} ${said}`);
+  const out: string[] = [];
+  for (const sentence of after.split(/(?<=[.!?])\s+/)) {
+    const toks = sentence.split(/\s+/).slice(1); // the first word of a sentence is capitalised anyway
+    for (const raw of toks) {
+      const w = raw.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9&+#.]+$/g, "");
+      if (w.length >= 3 && /^[A-Z]/.test(w) && !known.includes(norm(w))) out.push(w);
+    }
+  }
+  return out;
+}
+
 export function textOf(snap: Snapshot): string {
   return [snap.summary, snap.skills.join(", "), ...snap.roles.flatMap((r) => [r.title, r.company, ...r.bullets.map((b) => b.text)])].join("\n");
 }
@@ -91,6 +119,8 @@ export function validateProposals(raw: RawProposal[], snap: Snapshot, said: stri
     if (!after || !why) continue;
     // A number is a claim about the person, so it cannot come from the posting.
     if (!numbersSupported(after, page, said)) continue;
+    // Bigger scope and new names are claims about the person too.
+    if (scopeStretch(after, page, said) || newNames(after, page, said).length) continue;
 
     if (p.kind === "replace") {
       const field = p.field;
@@ -127,6 +157,7 @@ export function validateOptions(options: string[], notes: string): string[] {
     if (words(t) < 5 || seen.has(norm(t))) continue;
     // A number here has to be one the person just wrote. Borrowing a result from another line would pin it on something it was not.
     if (!numbersSupported(t, notes)) continue;
+    if (scopeStretch(t, "", notes) || newNames(t, "", notes).length) continue;
     if ([...significant(t)].filter((w) => noteWords.has(w)).length < Math.max(1, Math.min(2, noteWords.size))) continue;
     seen.add(norm(t));
     out.push(t);

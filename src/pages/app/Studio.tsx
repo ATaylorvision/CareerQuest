@@ -13,6 +13,9 @@ import { ResumeDocument } from "@/components/studio/ResumeDocument";
 import { ChangeCard, GapsPanel, TranslatorPanel, VersionsPanel } from "@/components/studio/panels";
 import { AtsScorePanel, KeywordPanel } from "@/components/studio/AtsPanels";
 import { WrenPanel } from "@/components/studio/WrenPanel";
+import { FormatBar } from "@/components/studio/FormatBar";
+import { autoAdjust, measureInFrame, suggestCuts, summarise, TWO_PAGE_AFTER_YEARS, yearsOfExperience, type CutSuggestion, type PageFit } from "@/lib/fit";
+import { DEFAULT_FORMAT, type ResumeFormat } from "@/lib/resumeFormat";
 import type { LineSuggestion } from "@/components/studio/ResumeDocument";
 import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
 import { TemplatePicker } from "@/components/TemplatePicker";
@@ -24,7 +27,7 @@ import { changesForJob, FREE_LIMITS, isPro } from "@/lib/selectors";
 import { scoreResume } from "@/lib/ats";
 import { useJobKeywords } from "@/hooks/useJobKeywords";
 import { buildResume, downloadText, printResume, resumeToText } from "@/lib/resumeBuild";
-import { RESUME_TEMPLATES, renderResumeHtml } from "@/data/resumeTemplates";
+import { RESUME_TEMPLATES, renderResumeHtml, resumeTemplate } from "@/data/resumeTemplates";
 import { api, ApiError } from "@/live/api";
 import { supabase } from "@/live/supabase";
 import { useSessionState } from "@/hooks/useSessionState";
@@ -250,6 +253,62 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changes, decisions, edits, store.items, built]);
 
+  /* ---------------- the printed page: format, fit, and cuts ---------------- */
+
+  const format = state.resume.format ?? DEFAULT_FORMAT;
+  const setFormat = (f: ResumeFormat) => update((s) => void (s.resume.format = f));
+  const tpl = resumeTemplate(state.resume.templateId);
+  const years = useMemo(() => yearsOfExperience(built.roles), [built.roles]);
+  const allowedPages: 1 | 2 = years > TWO_PAGE_AFTER_YEARS ? 2 : 1;
+  const pageHtml = (f: ResumeFormat) => renderResumeHtml(built, state.resume.templateId, "Resume", state.profile.headline, f, true);
+  const [pageFit, setPageFit] = useState<PageFit | null>(null);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [fitNote, setFitNote] = useState<string | null>(null);
+  const [cuts, setCuts] = useState<CutSuggestion[]>([]);
+
+  // Re-measures the real page a moment after anything that changes how it lays out.
+  useEffect(() => {
+    let alive = true;
+    const t = window.setTimeout(async () => {
+      const used = await measureInFrame(pageHtml(format));
+      if (alive) setPageFit(summarise(used, tpl, format, allowedPages));
+    }, 350);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [built, format, state.resume.templateId, state.profile.headline, allowedPages]);
+
+  const describe = (f: ResumeFormat) =>
+    [f.size ? `${f.size} pt type` : null, f.lineHeight ? `${f.lineHeight} line spacing` : null, f.margin !== null ? `${f.margin} in margins` : null].filter(Boolean).join(", ");
+
+  const autoFit = async () => {
+    setAutoBusy(true);
+    setFitNote(null);
+    setCuts([]);
+    try {
+      const out = await autoAdjust((f) => pageHtml(f), tpl, format, years);
+      setFormat(out.format);
+      setPageFit(out.fit);
+      if (out.fits) {
+        setFitNote(`Set to ${describe(out.format) || "the layout defaults"}${out.allowedPages === 2 ? ". With this much experience, two pages is normal." : "."}`);
+        toast.success(out.allowedPages === 2 ? "Fits on two pages" : "Fits on one page");
+      } else {
+        setCuts(suggestCuts(built, out.fit.linesOver));
+        setFitNote(`Even at ${out.format.size ?? tpl.base} pt with the tightest spacing it runs about ${out.fit.linesOver} lines over, and we will not go below 9.5 pt. You could cut a few lines below, or try the Compact layout.`);
+      }
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
+  const cutLine = (id: string) => {
+    editField(id, "");
+    setCuts((c) => c.filter((x) => x.id !== id));
+    toast("Line removed", { description: "You can bring it back with Undo my edits." });
+  };
+
   const useSuggestion = (id: string) => (id.startsWith("tailor:") ? decide(id.slice(7), "accepted") : store.use(id));
   const skipSuggestion = (id: string) => (id.startsWith("tailor:") ? decide(id.slice(7), "rejected") : store.skip(id));
 
@@ -393,7 +452,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onSelect={() => {
-                    if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline))
+                    if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format))
                       toast.error("Your browser blocked the print window. Allow pop ups and try again.");
                   }}
                 >
@@ -483,6 +542,25 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
               </p>
             </div>
 
+            <FormatBar
+              format={format}
+              onChange={setFormat}
+              baseSize={tpl.base}
+              lockedMargins={!!tpl.bleed}
+              fit={pageFit}
+              allowedPages={allowedPages}
+              onAuto={() => void autoFit()}
+              autoBusy={autoBusy}
+              note={fitNote}
+              cuts={cuts}
+              onCut={cutLine}
+              onRoom={() => {
+                document.getElementById("wren-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                toast("Tell Wren what else you have done, or use Write a line.");
+              }}
+              previewHtml={pageHtml(format)}
+            />
+
             {showLayouts && (
               <div className="card-base p-5">
                 <TemplatePicker
@@ -521,7 +599,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
               <Button
                 variant="outline"
                 onClick={() => {
-                  if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
+                  if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
                 }}
               >
                 <Printer /> Download PDF
@@ -557,7 +635,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
             </Card>
 
             {live && (
-              <Card className="p-4">
+              <Card className="p-4" id="wren-card">
                 <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
                   <Sparkles className="h-4 w-4 text-primary" aria-hidden /> Wren, your resume editor
                 </h2>

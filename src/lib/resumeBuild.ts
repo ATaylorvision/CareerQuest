@@ -1,6 +1,7 @@
 import { BASE_RESUME, type Resume } from "@/data/user";
 import type { TailorChange } from "@/data/resumeStudio";
 import { renderResumeHtml } from "@/data/resumeTemplates";
+import type { ResumeFormat } from "@/lib/resumeFormat";
 
 export interface BuiltResume extends Resume {
   certsOwnSection: boolean;
@@ -161,6 +162,6 @@ export function printHtml(html: string): boolean {
 }
 
 /** Opens the chosen layout in a print window. Returns false if a pop up blocker stopped it. */
-export function printResume(r: BuiltResume, title: string, templateId?: string, headline?: string) {
-  return printHtml(renderResumeHtml(r, templateId, title, headline));
+export function printResume(r: BuiltResume, title: string, templateId?: string, headline?: string, format?: ResumeFormat) {
+  return printHtml(renderResumeHtml(r, templateId, title, headline, format));
 }

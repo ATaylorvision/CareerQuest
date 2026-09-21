@@ -269,8 +269,8 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
         title="Start with your resume"
         sub={
           building
-            ? "No file needed. Answer what you can, in your own words. Truth Mode will only ever use what you put here."
-            : "We read it once, then show you exactly what we found. Fix anything we got wrong. Truth Mode will only ever use what is here."
+            ? "No file needed. Answer what you can, in your own words. We will only ever use what you put here."
+            : "We read it once, then show you exactly what we found. Fix anything we got wrong. We will only ever use what is here."
         }
       />
 

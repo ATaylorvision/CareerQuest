@@ -52,6 +52,23 @@ test("no more than six come back", () => {
   const many = Array.from({ length: 10 }, (_, i) => add("role-1", `Trained new hires on receiving procedures, batch number ${i}.`));
   assert.ok(v(many, "I trained new hires on receiving procedures").length <= 6);
 });
+test("stretching the scope of a line is dropped", () => {
+  assert.equal(v([rep("b1", "Cut shrink from 2.4% to 1.1% by redesigning receiving checks across the store.")]).length, 0);
+  assert.equal(v([rep("b1", "Cut shrink from 2.4% to 1.1% with company-wide receiving checks.")]).length, 0);
+  assert.equal(v([rep("b1", "Drove strategic shrink reduction from 2.4% to 1.1% through receiving checks.")]).length, 0);
+});
+test("a scope word the resume already uses may stay", () => {
+  const s2 = cleanSnapshot({ summary: "Ran operations across the store for seven years with strong results.", skills: [], roles: [{ id: "role-1", title: "Manager", company: "Bayside", bullets: [{ id: "b1", text: "Led inventory counts across the store every week." }] }] })!;
+  const out = validateProposals([rep("b1", "Led weekly inventory counts across the store with steady accuracy.")], s2, "make it stronger");
+  assert.equal(out.length, 1);
+});
+test("a scope word the person just used may be used", () => assert.equal(v([rep("b2", "Led 28 associates across two shifts company-wide.")], "I did this company-wide").length, 1));
+test("a new tool or employer name is dropped", () => {
+  assert.equal(v([rep("b2", "Led 28 associates across two shifts using Kronos scheduling.")]).length, 0);
+  assert.equal(v([rep("b2", "Led 28 associates across two shifts using Kronos scheduling.")], "I used Kronos").length, 1);
+});
+test("a capital letter at the start of a sentence is not a new name", () => assert.equal(v([rep("summary", "Operations manager with seven years running high volume stores. Known for inventory accuracy and process fixes.")]).length, 1));
+test("options that stretch the scope of the notes are dropped", () => assert.equal(validateOptions(["Trained new hires on receiving across the entire company."], "I trained new hires on receiving").length, 0));
 test("options must build on the person's own notes", () => {
   const notes = "I trained new hires on receiving and safety";
   const out = validateOptions(["Trained new hires on receiving and safety procedures.", "Won an industry award for excellence in logistics.", "Coached new hires through receiving and safety checks."], notes);

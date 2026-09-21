@@ -177,7 +177,7 @@ export function LiveApply({ job, open, onOpenChange }: { job: Job; open: boolean
   /* ---------------- getting things out ---------------- */
 
   const resumePdf = () => {
-    if (!printResume(resume, fileBase, state.resume.templateId, state.profile.headline)) return toast.error("Your browser blocked the print window. Allow pop ups and try again.");
+    if (!printResume(resume, fileBase, state.resume.templateId, state.profile.headline, state.resume.format)) return toast.error("Your browser blocked the print window. Allow pop ups and try again.");
     markApplied("download");
   };
   const resumeTxt = () => {
@@ -189,7 +189,7 @@ export function LiveApply({ job, open, onOpenChange }: { job: Job; open: boolean
     markApplied("download");
   };
   const letterPdf = () => {
-    if (!printHtml(renderLetterHtml(letterCtx(), state.resume.letterTemplateId, `${resume.name} cover letter`))) return toast.error("Your browser blocked the print window. Allow pop ups and try again.");
+    if (!printHtml(renderLetterHtml(letterCtx(), state.resume.letterTemplateId, `${resume.name} cover letter`, state.resume.format ? { ...state.resume.format, size: null } : undefined))) return toast.error("Your browser blocked the print window. Allow pop ups and try again.");
     markApplied("download");
   };
   const letterTxt = () => {

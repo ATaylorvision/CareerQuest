@@ -154,7 +154,7 @@ function DemoApplyFlow({ job, open, onOpenChange }: { job: Job; open: boolean; o
                   <Label htmlFor="incl">Include cover letter</Label>
                   <Switch id="incl" checked={includeLetter} onCheckedChange={setIncludeLetter} />
                 </div>
-                <p className="text-xs text-muted-foreground">{savedLetter ? "Using the letter you saved in the Studio." : job.live ? "You have not saved a cover letter for this job. It will be sent without one." : "Using a Truth Mode draft built from your resume."}</p>
+                <p className="text-xs text-muted-foreground">{savedLetter ? "Using the letter you saved in the Studio." : job.live ? "You have not saved a cover letter for this job. It will be sent without one." : "Using a draft built from your resume."}</p>
               </div>
             </div>
 

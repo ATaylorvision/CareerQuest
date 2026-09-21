@@ -12,8 +12,8 @@ const ROWS: [string, string | boolean, string | boolean][] = [
   ["Career Translator", true, true],
   ["Today's Plan and streaks", true, true],
   ["Application tracker and receipts", true, true],
-  ["Truth Mode tailored resumes", "3 per month", "Unlimited"],
-  ["Truth Mode cover letters", "3 per month", "Unlimited"],
+  ["Tailored resumes", "3 per month", "Unlimited"],
+  ["Cover letters", "3 per month", "Unlimited"],
   ["One click apply with full receipts", false, true],
   ["Insider Connections and outreach drafting", false, true],
   ["Interview prep question bank and practice mode", "Sample questions", "Full bank, included"],
@@ -110,7 +110,7 @@ export default function Pricing() {
             </AccordionItem>
             <AccordionItem value="d">
               <AccordionTrigger>Can the resume tailor make things up to help me get past filters?</AccordionTrigger>
-              <AccordionContent className="text-muted-foreground">No. Truth Mode is always on. It can reorder, reword, re-emphasize, and reformat what is already in your resume. It cannot add a skill, number, employer, or date you did not provide.</AccordionContent>
+              <AccordionContent className="text-muted-foreground">No. Tailoring can only reorder, reword, re-emphasize, and reformat what is already in your resume. It cannot add a skill, number, employer, or date you did not provide.</AccordionContent>
             </AccordionItem>
             <AccordionItem value="e">
               <AccordionTrigger>Do you offer discounts if I was laid off?</AccordionTrigger>

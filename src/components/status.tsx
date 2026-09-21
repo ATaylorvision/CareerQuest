@@ -120,29 +120,6 @@ export function VerifiedMark({ verified, size = "sm" }: { verified: boolean; siz
   );
 }
 
-export function TruthModeBadge({ className }: { className?: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label="Truth Mode is on and cannot be turned off. CareerQuest will never add a skill, number, employer, or date that is not already in your resume."
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border border-success-border bg-success-soft px-3 py-1 text-xs font-semibold text-success cursor-help",
-            className,
-          )}
-        >
-          <Lock className="h-3.5 w-3.5" aria-hidden />
-          Truth Mode: On
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-[280px] text-xs leading-relaxed">
-        CareerQuest will never add a skill, number, employer, or date that is not already in your resume.
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 export function SampleTag({ children = "Sample data", className }: { children?: React.ReactNode; className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1 rounded-md border border-dashed px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground", className)}>

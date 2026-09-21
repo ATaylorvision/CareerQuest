@@ -6,6 +6,8 @@
  * Black, white and grey, one page, real text.
  */
 
+import { applyFormat, DEFAULT_FORMAT, type ResumeFormat } from "@/lib/resumeFormat";
+
 export interface LetterContext {
   name: string;
   location: string;
@@ -24,6 +26,10 @@ export interface LetterTemplate {
   name: string;
   blurb: string;
   bestFor: string;
+  /** Body size in points at which the layout is designed. Defaults to 11. */
+  base?: number;
+  /** The layout's own line spacing. Defaults to 1.6. */
+  lh?: number;
   css: string;
   body: (c: LetterContext) => string;
 }
@@ -155,6 +161,155 @@ export const LETTER_TEMPLATES: LetterTemplate[] = [
       <div class="sign">Sincerely,<br>${esc(c.name)}<br><span style="color:#777;font-size:9.5pt">${[c.phone, c.email].filter(Boolean).map(esc).join(" · ")}</span></div>`;
     },
   },
+  {
+    id: "banner",
+    name: "Banner",
+    blurb: "The dark name band from the Banner resume, then a clean letter beneath it.",
+    bestFor: "Sales, operations and customer roles. Pairs with the Banner resume.",
+    css: `${BASE}
+      body{font-family:Arial,Helvetica,"Liberation Sans",sans-serif;font-size:10.5pt}
+      .band{background:#1a1a1a;color:#fff;padding:16px 20px;margin-bottom:20px}
+      .band h1{font-size:20pt;margin:0;color:#fff}
+      .band .contact{color:#d6d6d6;font-size:9.3pt;margin-top:5px}
+      .meta{color:#555;font-size:9.5pt;margin-bottom:14px}
+      .greet{margin-bottom:11px}
+    `,
+    body: (c) => `
+      <div class="band"><h1>${esc(c.name)}</h1><div class="contact">${[c.location, c.phone, c.email].filter(Boolean).map(esc).join(" &nbsp;|&nbsp; ")}</div></div>
+      <div class="meta">${esc(c.date)} &nbsp;·&nbsp; ${esc(c.company)} &nbsp;·&nbsp; ${esc(c.jobTitle)}</div>
+      <div class="greet">${greeting(c)}</div>
+      ${paras(c)}
+      <div class="sign">Sincerely,<br>${esc(c.name)}</div>`,
+  },
+
+  {
+    id: "executive",
+    name: "Executive",
+    blurb: "A centred small caps name over a double rule, and a formal, unhurried letter.",
+    bestFor: "Senior and management roles. Pairs with the Executive resume.",
+    css: `${BASE}
+      body{font-family:Cambria,Georgia,"Times New Roman",serif}
+      .head{text-align:center;padding-bottom:9px;border-bottom:3px double #222;margin-bottom:20px}
+      h1{font-size:21pt;font-variant:small-caps;letter-spacing:1.6px;font-weight:600;margin:0}
+      .contact{color:#444;font-size:9.5pt;margin-top:5px}
+      .meta{margin-bottom:16px;line-height:1.5}
+      .greet{margin-bottom:11px}
+    `,
+    body: (c) => `
+      <div class="head"><h1>${esc(c.name)}</h1><div class="contact">${[c.location, c.phone, c.email].filter(Boolean).map(esc).join(" &nbsp;|&nbsp; ")}</div></div>
+      <div class="meta">${esc(c.date)}<br>${esc(c.hiringManager ?? "Hiring Manager")}<br>${esc(c.company)}</div>
+      <div class="greet">${greeting(c)}</div>
+      ${paras(c)}
+      <div class="sign">Respectfully,<br>${esc(c.name)}</div>`,
+  },
+
+  {
+    id: "heritage",
+    name: "Heritage",
+    blurb: "A left aligned serif name with a dotted rule, and the warm, traditional feel of the Heritage resume.",
+    bestFor: "Education, nonprofit, healthcare and hospitality.",
+    base: 11.5,
+    css: `${BASE}
+      body{font-family:Garamond,"EB Garamond",Georgia,"Times New Roman",serif;font-size:11.5pt;line-height:1.55}
+      h1{font-size:23pt;font-weight:600;margin:0;letter-spacing:.4px}
+      .contact{color:#444;font-size:10pt;margin:4px 0 0;padding-bottom:8px;border-bottom:1px dotted #555}
+      .meta{margin:18px 0 14px;line-height:1.5}
+      .greet{margin-bottom:11px}
+    `,
+    body: (c) => `
+      <h1>${esc(c.name)}</h1>
+      <div class="contact">${[c.location, c.phone, c.email].filter(Boolean).map(esc).join(" &nbsp;|&nbsp; ")}</div>
+      <div class="meta">${esc(c.date)}<br>${esc(c.company)}</div>
+      <div class="greet">${greeting(c)}</div>
+      ${paras(c)}
+      <div class="sign">Warm regards,<br>${esc(c.name)}</div>`,
+  },
+
+  {
+    id: "ledger",
+    name: "Ledger",
+    blurb: "Your details and the date in a narrow left column, the letter in the wide column beside them.",
+    bestFor: "A modern, organised look. Pairs with the Ledger resume.",
+    css: `${BASE}
+      body{font-family:Calibri,Carlito,"Segoe UI",Arial,sans-serif}
+      .wrap{display:grid;grid-template-columns:150px 1fr;gap:26px}
+      .left{color:#444;font-size:9.5pt;line-height:1.7;border-right:1px solid #ccc;padding-right:14px}
+      .left b{display:block;font-size:13pt;color:#111;line-height:1.2;margin-bottom:8px}
+      .left .k{margin-top:12px;color:#888;font-size:8.5pt;letter-spacing:1.2px;text-transform:uppercase}
+      .greet{margin-bottom:11px}
+    `,
+    body: (c) => `
+      <div class="wrap">
+        <div class="left"><b>${esc(c.name)}</b>${[c.location, c.phone, c.email].filter(Boolean).map(esc).join("<br>")}
+          <div class="k">Date</div>${esc(c.date)}<div class="k">To</div>${esc(c.company)}<div class="k">Role</div>${esc(c.jobTitle)}</div>
+        <div><div class="greet">${greeting(c)}</div>${paras(c)}<div class="sign">Sincerely,<br>${esc(c.name)}</div></div>
+      </div>`,
+  },
+
+  {
+    id: "split",
+    name: "Split header",
+    blurb: "Your name on the left and your contact details on the right, level with each other, over a single rule.",
+    bestFor: "A balanced, businesslike page. Pairs with the Split resume.",
+    css: `${BASE}
+      body{font-family:"Helvetica Neue",Arial,Helvetica,sans-serif;font-size:10.5pt}
+      .top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:1.5px solid #111;padding-bottom:9px;margin-bottom:20px}
+      h1{font-size:21pt;margin:0}
+      .contact{color:#555;font-size:9.3pt;text-align:right;line-height:1.55}
+      .meta{color:#555;font-size:9.5pt;margin-bottom:14px}
+      .greet{margin-bottom:11px}
+    `,
+    body: (c) => `
+      <div class="top"><h1>${esc(c.name)}</h1><div class="contact">${[c.location, c.phone, c.email].filter(Boolean).map(esc).join("<br>")}</div></div>
+      <div class="meta">${esc(c.date)}<br>${esc(c.company)}<br>Re: ${esc(c.jobTitle)}</div>
+      <div class="greet">${greeting(c)}</div>
+      ${paras(c)}
+      <div class="sign">Sincerely,<br>${esc(c.name)}</div>`,
+  },
+
+  {
+    id: "centered",
+    name: "Centred",
+    blurb: "Name and contact details centred at the top, the letter left aligned beneath. Simple and balanced.",
+    bestFor: "Anywhere. It is the safe middle ground.",
+    css: `${BASE}
+      body{font-family:Georgia,"Times New Roman",serif}
+      .head{text-align:center;margin-bottom:22px}
+      h1{font-size:19pt;margin:0;letter-spacing:.5px}
+      .contact{color:#555;font-size:9.5pt;margin-top:5px}
+      .meta{margin-bottom:14px;line-height:1.5}
+      .greet{margin-bottom:11px}
+    `,
+    body: (c) => `
+      <div class="head"><h1>${esc(c.name)}</h1><div class="contact">${[c.location, c.phone, c.email].filter(Boolean).map(esc).join(" &nbsp;·&nbsp; ")}</div></div>
+      <div class="meta">${esc(c.date)}<br>${esc(c.company)}</div>
+      <div class="greet">${greeting(c)}</div>
+      ${paras(c)}
+      <div class="sign">Sincerely,<br>${esc(c.name)}</div>`,
+  },
+
+  {
+    id: "tight",
+    name: "Tight",
+    blurb: "Smaller type and closer spacing, so a fuller letter still fits on one page.",
+    bestFor: "When your letter runs long and you would rather not cut it.",
+    base: 10,
+    lh: 1.4,
+    css: `${BASE}
+      body{font-family:Calibri,Carlito,"Segoe UI",Arial,sans-serif;font-size:10pt;line-height:1.4;padding:38px 46px}
+      h1{font-size:16pt;margin:0;font-weight:700}
+      .contact{color:#666;font-size:9pt;margin:4px 0 12px;padding-bottom:9px;border-bottom:1px solid #ccc}
+      p{margin:0 0 8px}
+      .greet{margin-bottom:8px}
+      .sign{margin-top:14px}
+    `,
+    body: (c) => `
+      <h1>${esc(c.name)}</h1>
+      <div class="contact">${[c.location, c.phone, c.email].filter(Boolean).map(esc).join(" &nbsp;|&nbsp; ")} &nbsp;·&nbsp; ${esc(c.date)}</div>
+      <div class="greet">${greeting(c)}</div>
+      ${paras(c)}
+      <div class="sign">Sincerely,<br>${esc(c.name)}</div>`,
+  },
 ];
 
 export const DEFAULT_LETTER_TEMPLATE = LETTER_TEMPLATES[0].id;
@@ -163,7 +318,8 @@ export function letterTemplate(id: string | undefined): LetterTemplate {
   return LETTER_TEMPLATES.find((t) => t.id === id) ?? LETTER_TEMPLATES[0];
 }
 
-export function renderLetterHtml(c: LetterContext, templateId: string | undefined, title: string): string {
+export function renderLetterHtml(c: LetterContext, templateId: string | undefined, title: string, format: ResumeFormat = DEFAULT_FORMAT, preview = false): string {
   const t = letterTemplate(templateId);
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${t.css}</style></head><body>${t.body(c)}</body></html>`;
+  const css = applyFormat({ css: t.css, base: t.base ?? 11, lh: t.lh ?? 1.6 }, format, preview);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body>${t.body(c)}</body></html>`;
 }

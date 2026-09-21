@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Check, Loader2, Sparkles, X } from "lucide-react";
 import { EditableText } from "./EditableText";
 import type { BuiltResume } from "@/lib/resumeBuild";
@@ -60,7 +61,6 @@ function Suggestable({ field, hover, children }: { field: string; hover: Hover; 
   const [open, setOpen] = useState(false);
   const [typing, setTyping] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
   const timer = useRef<number>();
 
   const show = () => {
@@ -76,13 +76,9 @@ function Suggestable({ field, hover, children }: { field: string; hover: Hover; 
   const improve = async () => {
     if (!hover.onImprove || busy) return;
     setBusy(true);
-    setNote(null);
     const found = await hover.onImprove(field).catch(() => false);
     setBusy(false);
-    if (!found) {
-      setNote("This line is already strong.");
-      window.setTimeout(() => setNote(null), 3500);
-    }
+    if (!found) toast("This line is already strong", { description: "Wren did not find a change worth making." });
   };
 
   if (!hover.suggestions && !hover.onImprove) return <>{children}</>;
@@ -123,10 +119,11 @@ function Suggestable({ field, hover, children }: { field: string; hover: Hover; 
           type="button"
           onClick={() => void improve()}
           disabled={busy}
-          className="absolute -top-3 right-0 z-20 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-white px-2 py-0.5 font-sans text-[11px] font-medium text-primary shadow-sm hover:bg-primary/5 disabled:opacity-70"
+          aria-label="Improve this line with Wren"
+          title={busy ? "Wren is thinking" : "Improve this line with Wren"}
+          className="absolute -right-3 top-0 z-20 flex h-5 w-5 items-center justify-center rounded-full border border-primary/40 bg-white text-primary shadow-sm transition-transform hover:scale-110 disabled:opacity-70"
         >
           {busy ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <Sparkles className="h-3 w-3" aria-hidden />}
-          {busy ? "Wren is thinking" : (note ?? "Improve this line")}
         </button>
       )}
     </div>

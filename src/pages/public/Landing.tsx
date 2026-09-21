@@ -4,7 +4,7 @@ import { MarketingLayout } from "@/components/layout/MarketingLayout";
 import { Button } from "@/components/ui/button";
 import { PricingTiers } from "@/components/PricingTiers";
 import { CompanyLogo, ScoreRing } from "@/components/common";
-import { LegitBadgeView, MethodBadge, Pill, SampleTag, TruthModeBadge } from "@/components/status";
+import { LegitBadgeView, MethodBadge, Pill, SampleTag } from "@/components/status";
 import { demoJobById as jobById, DEMO_JOBS as JOBS } from "@/data/jobs";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { useStore } from "@/store/AppStore";
@@ -126,7 +126,6 @@ function TruthVisual() {
     <div className="card-base p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-semibold">Side by side, line by line</div>
-        <TruthModeBadge />
       </div>
       <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
         <div className="rounded-lg border p-3">
@@ -264,7 +263,7 @@ export default function Landing() {
           <p className="mx-auto max-w-2xl text-center text-sm font-medium text-muted-foreground">Everything in CareerQuest answers one of two questions.</p>
           <div className="mx-auto mt-6 grid grid-cols-1 max-w-4xl gap-4 md:grid-cols-2">
             {[
-              { q: "Does my experience actually count here?", a: "Career Translator, Truth Mode tailoring, and a Transferable Fit score on every match." },
+              { q: "Does my experience actually count here?", a: "Career Translator, honest tailoring, and a Transferable Fit score on every match." },
               { q: "Did that application go anywhere?", a: "A receipt for every application, honest status labels, and a Proof Score you can check." },
             ].map((x) => (
               <div key={x.q} className="card-base p-6">
@@ -324,10 +323,10 @@ export default function Landing() {
             />
             <Feature
               flip
-              eyebrow="2. Truth Mode tailoring"
+              eyebrow="2. Honest tailoring"
               title="Your resume, rearranged for the job. Never invented."
               body="The tailor can only reorder, reword, re-emphasize, and reformat what is already in your resume. You see every change side by side with a reason, and nothing goes in until you accept it."
-              points={["Truth Mode is always on and cannot be turned off", "Requirements you do not meet go in a separate Gaps panel, with an honest way to address each one", "Live ATS compatibility score with an itemized breakdown"]}
+              points={["Nothing is ever added that is not already in your resume", "Requirements you do not meet go in a separate Gaps panel, with an honest way to address each one", "Live ATS compatibility score with an itemized breakdown"]}
               visual={<TruthVisual />}
             />
             <Feature
