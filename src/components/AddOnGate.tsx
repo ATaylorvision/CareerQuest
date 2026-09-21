@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { Card } from "@/components/common";
 import { useStore, type AddOns } from "@/store/AppStore";
+import { useLive } from "@/live/LiveProvider";
+import { openCheckout } from "@/live/billing";
 
 /** Placeholder price. Change it here and the whole paywall follows. */
 export const ADD_ON_PRICE = { connections: { monthly: 12, name: "Insider Connections" } };
@@ -25,6 +27,7 @@ interface Props {
 export function AddOnGate({ addOn, title, blurb, points, children }: Props) {
   useDocTitle(title);
   const { state } = useStore();
+  const { user } = useLive();
   if (state.billing.addOns?.[addOn]) return <>{children}</>;
 
   const price = ADD_ON_PRICE[addOn];
@@ -59,16 +62,15 @@ export function AddOnGate({ addOn, title, blurb, points, children }: Props) {
           <Button
             size="lg"
             className="mt-4 w-full sm:w-auto"
-            onClick={() =>
-              toast("Payments are not switched on yet", {
-                description: "Nothing was charged. This add on goes on sale when billing is live, and you will be able to cancel it in one click.",
-              })
-            }
+            onClick={() => {
+              if (live && user) return openCheckout(addOn, user);
+              toast("This is the demo", { description: "Nothing was charged. Create an account to buy add ons." });
+            }}
           >
             <Sparkles /> Add {price.name}
           </Button>
           {/* Saying this out loud beats a button that looks like it will charge and does not. */}
-          <p className="mt-3 text-xs text-muted-foreground">Billing is not live yet, so this button will not charge you.</p>
+          <p className="mt-3 text-xs text-muted-foreground">{live ? "You pay on Stripe's secure page. We never see your card, and you can cancel any time from your billing page." : "This is the demo, so this button will not charge you."}</p>
         </div>
 
         <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">

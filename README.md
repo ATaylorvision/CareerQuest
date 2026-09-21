@@ -24,6 +24,7 @@ node scripts/e2e-admin.mjs     # tests the admin panel API, including that a nor
 node scripts/e2e-studio.mjs    # tests tailoring, cover letters and interview prep against a real cached job
 npm run test:ats               # the ATS scorer and keyword tools, no network needed
 npm run test:tracker           # the tracker's counts and follow up rules, no network needed
+npm run test:stripe            # the check that a payment message really came from Stripe
 npm run security               # two accounts, then tries every way one could read or change the other
 ```
 
@@ -47,13 +48,14 @@ npm run security               # two accounts, then tries every way one could re
 | Tracker | Columns: Saved, Applied, Screening, Interview, Offer, Rejected, Withdrawn. The summary on top (`src/lib/tracker.ts`) counts how far each application got, the share that heard back, interviewed or received an offer, and lists ones with no answer after 14 days. |
 | Templates | Five resume layouts and five cover letter layouts in `src/data/resumeTemplates.ts` and `letterTemplates.ts`. Each thumbnail is the real template rendered with the user's own content. All are one page, black and white, and made of selectable text so an ATS can read them. |
 | Commute radius | Search starts from the home base and passes the person's own radius to the job board. Onsite and hybrid listings out of range are dropped, by coordinates where both ends have them (`api/_lib/geo.ts`). There is no nationwide fallback. |
+| Payments | Stripe Payment Links (`src/live/billing.ts`) carry the account id. Only a signed webhook (`api/stripe.ts`) can switch on Pro or the Connections add on, and only a cancelled or lapsed subscription switches it off. Cards, invoices and cancelling happen on Stripe's billing portal. Events to send: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `customer.subscription.updated`, `customer.subscription.deleted`. |
 | Add ons | Insider Connections is bought separately from any plan (`billing.addOns`, written by the server only). |
 | Data control | Settings exports everything from the database and can delete the account, its rows, and its files. |
 | Admin panel | `/admin`, staff only. Live metrics, every account, the job cache with its legitimacy verdicts, the application feed, and a service health check. Staff can change a plan, reset onboarding, grant admin, and delete an account. Every change is written to an audit log. |
 
 ## Not built yet for real accounts
 
-Insider Connections needs contacts the user imports themselves, which is not built, so it sits behind its add on page. Billing is not switched on: plans are shown honestly and nothing is charged. Applications are recorded as "Manual required" because CareerQuest cannot submit to employer systems for the user yet.
+Insider Connections needs contacts the user imports themselves, which is not built, so it sits behind its add on page. Billing works in Stripe test mode once the three Stripe keys are set. Applications are recorded as "Manual required" because CareerQuest cannot submit to employer systems for the user yet.
 
 ## Admin panel
 

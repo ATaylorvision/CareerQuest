@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { CalendarClock, CreditCard, Receipt, RotateCcw, XCircle, Zap } from "lucide-react";
 import { Card, PageHeader, ScoreBar, SectionTitle } from "@/components/common";
@@ -10,6 +11,8 @@ import { useStore } from "@/store/AppStore";
 import { FREE_LIMITS, isPro } from "@/lib/selectors";
 import { daysFromNow, diffDays, fmtLongDate } from "@/lib/date";
 import { useDocTitle } from "@/hooks/useDocTitle";
+import { useLive } from "@/live/LiveProvider";
+import { openCheckout, openPortal } from "@/live/billing";
 
 export default function Billing() {
   useDocTitle("Account and billing");
@@ -18,11 +21,23 @@ export default function Billing() {
   const pro = isPro(state);
   const live = state.mode === "live";
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const { user } = useLive();
+  const [params] = useSearchParams();
+  const justPaid = params.get("paid") === "1";
+  useEffect(() => {
+    if (justPaid && !pro) {
+      // The payment provider tells our server a moment after the person comes back, so look again shortly.
+      const t = window.setTimeout(() => window.location.reload(), 4000);
+      return () => window.clearTimeout(t);
+    }
+  }, [justPaid, pro]);
   const price = b.cycle === "yearly" ? "$180" : "$24";
   const monthApps = state.applications.filter((a) => a.receipt?.submittedAt && diffDays(a.receipt.submittedAt) <= 30).length;
   const oneClick = state.applications.filter((a) => a.receipt?.method === "submitted" && a.receipt.submittedAt && diffDays(a.receipt.submittedAt) <= 30).length;
 
   const startTrial = (cycle: "monthly" | "yearly") => {
+    // Real accounts pay on Stripe. What follows is the demo only.
+    if (live && user) return openCheckout("pro", user);
     update((s) => {
       s.billing = { ...s.billing, tier: "trial", cycle, trialStartedAt: new Date().toISOString(), trialEndsAt: daysFromNow(7), renewsAt: daysFromNow(7), cancelledAt: null };
     });
@@ -30,6 +45,7 @@ export default function Billing() {
   };
 
   const cancel = () => {
+    if (live) return void openPortal();
     if (b.tier === "trial") {
       update((s) => {
         s.billing = { ...s.billing, tier: "free", cycle: s.billing.cycle, trialStartedAt: null, trialEndsAt: null, renewsAt: null, cancelledAt: new Date().toISOString() };
@@ -42,6 +58,7 @@ export default function Billing() {
   };
 
   const switchCycle = () => {
+    if (live) return void openPortal();
     const next = b.cycle === "monthly" ? "yearly" : "monthly";
     update((s) => void (s.billing.cycle = next));
     toast.success(next === "yearly" ? "Switched to yearly, $180" : "Switched to monthly, $24", { description: `The change applies on ${fmtLongDate(b.renewsAt ?? daysFromNow(7))}.` });
@@ -58,6 +75,12 @@ export default function Billing() {
   return (
     <div>
       <PageHeader title="Account and billing" sub="What you pay, when you pay it, and how to stop. All on one screen." />
+
+      {live && justPaid && (
+        <div role="status" className="mb-6 rounded-lg border border-success/40 bg-success-soft p-3.5 text-sm">
+          {pro ? "Thank you. Your plan is active." : "Thank you. Your payment went through, and your plan is switching on. This page refreshes on its own in a moment."}
+        </div>
+      )}
 
       <Card className="mb-6">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
@@ -93,13 +116,13 @@ export default function Billing() {
           <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:flex-col">
             {b.tier === "free" ? (
               <Button size="lg" onClick={() => startTrial("monthly")}>
-                <Zap /> Start 7 day free trial
+                <Zap /> {live ? "Upgrade to Pro" : "Start 7 day free trial"}
               </Button>
             ) : (
               <>
                 {!b.cancelledAt && (
                   <Button size="lg" variant="outline" onClick={switchCycle}>
-                    {b.cycle === "monthly" ? "Switch to yearly, $180" : "Switch to monthly, $24"}
+                    {live ? "Change plan or card" : b.cycle === "monthly" ? "Switch to yearly, $180" : "Switch to monthly, $24"}
                   </Button>
                 )}
                 {!b.cancelledAt ? (
@@ -110,6 +133,7 @@ export default function Billing() {
                   <Button
                     size="lg"
                     onClick={() => {
+                      if (live) return void openPortal();
                       update((s) => void (s.billing.cancelledAt = null));
                       toast.success("Welcome back. Pro will renew as normal.");
                     }}
@@ -147,8 +171,13 @@ export default function Billing() {
             <SectionTitle icon={CreditCard} right={live ? undefined : <SampleTag>Sample card</SampleTag>}>Payment method</SectionTitle>
             {live ? (
               <div className="rounded-lg border border-dashed p-4 text-sm">
-                <div className="font-medium">No card on file</div>
-                <p className="mt-1 text-muted-foreground">Payments are not switched on yet, so there is nothing to charge and nothing to store. Your account is free while we finish this.</p>
+                <div className="font-medium">{pro ? "Your card is kept by Stripe" : "No card on file"}</div>
+                <p className="mt-1 text-muted-foreground">{pro ? "We never see or store your card number. Update it, download invoices or cancel on Stripe's page." : "You pay on Stripe's secure page when you upgrade. We never see or store your card number."}</p>
+                {pro && (
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => void openPortal()}>
+                    Manage billing
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-4 rounded-lg border p-4">
@@ -165,21 +194,31 @@ export default function Billing() {
           </Card>
           <Card>
             <SectionTitle icon={Receipt}>Billing history</SectionTitle>
-            <ul className="divide-y text-sm">
-              {b.trialStartedAt && (
-                <li className="flex justify-between py-2.5">
-                  <span>Pro trial started</span>
-                  <span className="text-muted-foreground">$0.00</span>
-                </li>
-              )}
-              <li className="py-2.5 text-muted-foreground">No charges yet.{b.tier === "trial" && b.trialEndsAt ? ` Your first charge would be ${price} on ${fmtLongDate(b.trialEndsAt)}.` : ""}</li>
-            </ul>
-            <div className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-              <b className="text-foreground">Refunds:</b> request a full refund here within 14 days of any charge. No questions, no forms.{" "}
-              <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={() => toast("Nothing to refund yet", { description: "You have not been charged. If you are, the refund button appears next to that charge." })}>
-                Request a refund
-              </Button>
-            </div>
+            {live ? (
+              <div className="text-sm">
+                <p className="text-muted-foreground">{pro ? "Every invoice and receipt is on Stripe's billing page, where you can also ask for a refund." : "Nothing has been charged. Once you upgrade, your invoices and receipts appear on Stripe's billing page."}</p>
+                {pro && (
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => void openPortal()}>
+                    See invoices
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <>
+                <ul className="divide-y text-sm">
+                  {b.trialStartedAt && (
+                    <li className="flex justify-between py-2.5">
+                      <span>Pro trial started</span>
+                      <span className="text-muted-foreground">$0.00</span>
+                    </li>
+                  )}
+                  <li className="py-2.5 text-muted-foreground">No charges yet.{b.tier === "trial" && b.trialEndsAt ? ` Your first charge would be ${price} on ${fmtLongDate(b.trialEndsAt)}.` : ""}</li>
+                </ul>
+                <div className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+                  This is the demo, so there is nothing to refund.
+                </div>
+              </>
+            )}
           </Card>
         </div>
       </div>
@@ -190,7 +229,7 @@ export default function Billing() {
         onFree={() => setConfirmCancel(true)}
         freeLabel="Move to Free"
         onPro={(c) => startTrial(c)}
-        proLabel={b.cancelledAt ? "Start Pro again" : "Start 7 day free trial"}
+        proLabel={live ? "Upgrade to Pro" : b.cancelledAt ? "Start Pro again" : "Start 7 day free trial"}
       />
 
       <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>

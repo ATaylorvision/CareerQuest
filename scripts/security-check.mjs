@@ -248,6 +248,19 @@ try {
   const { data: myResume } = await aAgain.from("resumes").select("parsed").eq("is_base", true).maybeSingle();
   ok("A still sees their own resume", myResume?.parsed?.summary === "SECRET-A-SUMMARY");
 
+  console.log("\n[10b] Nobody can give themselves a paid plan");
+  const forged = await fetch(`${BASE}/api/stripe`, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": "t=1,v1=deadbeef" }, body: JSON.stringify({ type: "checkout.session.completed", data: { object: { client_reference_id: a.id, payment_status: "paid", payment_link: "plink_x" } } }) });
+  ok("a made up payment message is refused", forged.status === 400 || forged.status === 500, `status ${forged.status}`);
+  const { data: aPlan } = await admin.from("profiles").select("plan_tier, add_ons").eq("id", a.id).single();
+  ok("and it changed nothing", aPlan.plan_tier === "free" && !aPlan.add_ons?.connections, `plan ${aPlan.plan_tier}`);
+  const noAuth = await fetch(`${BASE}/api/stripe`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  ok("the billing page link needs a signed in user", noAuth.status === 401, `status ${noAuth.status}`);
+  const noCustomer = await apiAs(a.token, "stripe", {});
+  ok("someone who never paid gets no billing page", noCustomer.status === 400, `status ${noCustomer.status}`);
+  await a.client.from("profiles").update({ plan_tier: "pro", add_ons: { connections: true } }).eq("id", a.id);
+  const { data: afterSelf } = await admin.from("profiles").select("plan_tier, add_ons").eq("id", a.id).single();
+  ok("a browser cannot write its own plan or add ons", afterSelf.plan_tier === "free" && !afterSelf.add_ons?.connections, `plan ${afterSelf.plan_tier}`);
+
   console.log("\n[11] Paid endpoints cannot be run without limit");
   // resume/parse allows 10 a day. An empty body is refused before any AI call,
   // so this costs nothing while still proving the counter bites.
