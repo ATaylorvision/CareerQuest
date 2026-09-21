@@ -22,6 +22,7 @@ npm run db:migrate   # applies supabase/schema.sql
 node scripts/e2e-backend.mjs   # full backend test with a throwaway account (dev server must be running)
 node scripts/e2e-admin.mjs     # tests the admin panel API, including that a normal account is refused
 node scripts/e2e-studio.mjs    # tests tailoring, cover letters and interview prep against a real cached job
+npm run test:ats               # the ATS scorer and keyword tools, no network needed
 npm run security               # two accounts, then tries every way one could read or change the other
 ```
 
@@ -39,6 +40,8 @@ npm run security               # two accounts, then tries every way one could re
 | Wren (copilot) | `api/chat.ts`. Streams Claude replies with the user's resume, matches, and applications as context. |
 | Proof of Application | Applying to a real job records a receipt. Confirmation evidence (pasted email or screenshot) is read by Claude before anything counts as verified (`api/receipt/verify.ts`). |
 | Dashboard | One screen to run the search. Streak on top, then counts, today's plan, the six week chart, and next week's target. A profile question a day sharpens matching, and the resume downloads straight from here. |
+| ATS score | Measured from the resume itself in `src/lib/ats.ts`, out of 100: keyword coverage 35, line quality 25, structure 20, length 10, sections 10. It follows every keystroke and lists what to fix, ranked by points recovered. It is labelled an estimate, since we are not running anyone's real screening system. With no posting to compare against it scores the other four parts out of 100. |
+| Keyword panel | The terms a posting asks for, sorted into on your resume, you may have this, and not found. A model reads each posting once and the answer is saved on the job; every term must appear in the posting and is shown in the posting's own words. Clicking a term we could not find asks "Have you done this?", and it only goes on the resume in the person's own words. |
 | Templates | Five resume layouts and five cover letter layouts in `src/data/resumeTemplates.ts` and `letterTemplates.ts`. Each thumbnail is the real template rendered with the user's own content. All are one page, black and white, and made of selectable text so an ATS can read them. |
 | Commute radius | Search starts from the home base and passes the person's own radius to the job board. Onsite and hybrid listings out of range are dropped, by coordinates where both ends have them (`api/_lib/geo.ts`). There is no nationwide fallback. |
 | Add ons | Insider Connections is bought separately from any plan (`billing.addOns`, written by the server only). |
@@ -106,6 +109,14 @@ Two rules worth knowing before changing the schema:
 2. **`guard_profile_columns` is the backstop.** Grants are easy to widen by accident, so a trigger
    refuses any change to `is_admin`, the billing columns, `add_ons`, `email` or `id` unless the
    caller is the service role. Server code keeps working; a browser session cannot get past it.
+
+### Most listings are only an excerpt
+
+Adzuna, the main job source, returns about 500 characters of each posting. In the job cache that is 169 of
+186 listings; only the JSearch listings and jobs on Greenhouse, Lever or Ashby boards carry the full text.
+Keyword reading and any check that needs the whole posting (required degree, clearance, years) are therefore
+working from a fragment for most jobs. The keyword panel says so and lets the person paste the full posting.
+Anything that depends on hard requirements should assume this until a full-text source is added.
 
 ### Daily limits and headers
 

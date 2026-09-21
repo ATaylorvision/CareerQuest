@@ -21,6 +21,7 @@ export interface JobRow {
   company_site_status: string;
   company_site_checked_at: string | null;
   legit: Job["legit"] | null;
+  keywords?: { must?: string[]; nice?: string[] } | null;
   raw: { signals?: LegitSignals } | null;
 }
 
@@ -130,6 +131,7 @@ export function rowToJob(row: JobRow, match: MatchRow): Job {
     live: true,
     applyUrl: row.apply_url ?? undefined,
     descriptionText: desc,
+    keywords: row.keywords && (row.keywords.must?.length || row.keywords.nice?.length) ? { must: row.keywords.must ?? [], nice: row.keywords.nice ?? [] } : null,
     reqChecks: t.requirements ?? [],
     translations: t.translations ?? [],
     storyLine: t.story ?? "",

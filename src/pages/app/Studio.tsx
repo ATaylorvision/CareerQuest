@@ -1,21 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRight, CheckCheck, Download, FileDown, Languages, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
 import { AiWorking, Card, PageHeader, Segmented, SkeletonLines } from "@/components/common";
-import { Pill, TruthModeBadge } from "@/components/status";
+import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ResumeDocument } from "@/components/studio/ResumeDocument";
-import { AtsPanel, ChangeCard, GapsPanel, TranslatorPanel, VersionsPanel } from "@/components/studio/panels";
+import { ChangeCard, GapsPanel, TranslatorPanel, VersionsPanel } from "@/components/studio/panels";
+import { AtsScorePanel, KeywordPanel } from "@/components/studio/AtsPanels";
 import { TemplatePicker } from "@/components/TemplatePicker";
 import { useStore } from "@/store/AppStore";
 import { JOBS, jobById } from "@/data/jobs";
 import type { TailorChange } from "@/data/resumeStudio";
-import { atsScore, changesForJob, FREE_LIMITS, isPro } from "@/lib/selectors";
+import { changesForJob, FREE_LIMITS, isPro } from "@/lib/selectors";
+import { scoreResume } from "@/lib/ats";
+import { useJobKeywords } from "@/hooks/useJobKeywords";
 import { buildResume, downloadText, printResume, resumeToText } from "@/lib/resumeBuild";
 import { RESUME_TEMPLATES, renderResumeHtml } from "@/data/resumeTemplates";
 import { api, ApiError } from "@/live/api";
@@ -70,8 +73,27 @@ export default function Studio() {
 
   const edits = state.resume.edits?.[job.id] ?? {};
   const contact = state.resume.contact ?? {};
-  const built = useMemo(() => buildResume(changes, decisions, { fields: edits, contact }), [changes, decisions, edits, contact]);
-  const ats = atsScore(changes, decisions);
+  const added = state.resume.added?.[job.id];
+  const built = useMemo(() => buildResume(changes, decisions, { fields: edits, contact, added }), [changes, decisions, edits, contact, added]);
+
+  // What is being typed right now, before it is committed. The score reads it so
+  // it follows every keystroke, while the page itself only changes on commit.
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const drafted = useDeferredValue(draft);
+  const scored = useMemo(() => {
+    if (!Object.keys(drafted).length) return built;
+    const fields = { ...edits };
+    const c = { ...contact } as Record<string, string>;
+    for (const [k, v] of Object.entries(drafted)) {
+      if (k.startsWith("contact.")) c[k.slice(8)] = v;
+      else fields[k] = v;
+    }
+    return buildResume(changes, decisions, { fields, contact: c, added });
+  }, [built, drafted, changes, decisions, edits, contact, added]);
+
+  const pasted = state.resume.postingText?.[job.id];
+  const { keywords: postingKeywords, source: kwSource, loading: kwLoading, excerpt } = useJobKeywords(job, { live, pasted });
+  const ats = useMemo(() => scoreResume(scored, postingKeywords), [scored, postingKeywords]);
   const savedVersion = state.resume.versions.find((v) => v.id === `v-${job.id}`);
   const touched = accepted > 0 || Object.keys(edits).length > 0;
 
@@ -97,6 +119,54 @@ export default function Studio() {
   const revertEdits = () =>
     update((s) => {
       if (s.resume.edits) delete s.resume.edits[job.id];
+      if (s.resume.added) delete s.resume.added[job.id];
+    });
+
+  const onLive = (fieldId: string, text: string | null) =>
+    setDraft((d) => {
+      if (text === null) {
+        if (!(fieldId in d)) return d;
+        const { [fieldId]: _gone, ...rest } = d;
+        return rest;
+      }
+      return d[fieldId] === text ? d : { ...d, [fieldId]: text };
+    });
+
+  /** Scrolls to a line on the document and puts the cursor in it. */
+  const jumpTo = (field?: string) => {
+    if (!field) return;
+    setDoc("resume");
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-field="${CSS.escape(field)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus({ preventScroll: true });
+    });
+  };
+
+  // Lines and skills the person confirmed with "Have you done this?". They go in
+  // exactly as written, and land on the page ready to be edited.
+  const addLine = (roleId: string, text: string) => {
+    const id = `add-${Date.now().toString(36)}`;
+    update((s) => {
+      if (!s.resume.added) s.resume.added = {};
+      if (!s.resume.added[job.id]) s.resume.added[job.id] = {};
+      (s.resume.added[job.id][roleId] ??= []).push({ id, text });
+    });
+    toast.success("Added to your resume", { description: "It is your own wording. Edit it on the page if you like." });
+    setTimeout(() => jumpTo(id), 60);
+  };
+  const addSkill = (term: string) => {
+    editField("skills", [...built.skills, term].join(", "));
+    toast.success(`Added "${term}" to your skills`);
+    setTimeout(() => jumpTo("skills"), 60);
+  };
+  const setPosting = (text: string | null) =>
+    update((s) => {
+      if (!s.resume.postingText) s.resume.postingText = {};
+      // Capped so a huge paste cannot bloat the saved working state.
+      if (text) s.resume.postingText[job.id] = text.slice(0, 20000);
+      else delete s.resume.postingText[job.id];
     });
 
   /* ---------------- tailoring ---------------- */
@@ -201,7 +271,6 @@ export default function Studio() {
         sub="Your resume and cover letter for one job, on one page. Type anywhere on the document to change it."
         actions={
           <>
-            <TruthModeBadge />
             {doc === "resume" && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -315,7 +384,7 @@ export default function Studio() {
               </div>
             )}
 
-            <ResumeDocument r={built} onEdit={editField} onContactEdit={editContact} />
+            <ResumeDocument r={built} onEdit={editField} onContactEdit={editContact} onLive={onLive} />
 
             <div className="z-10 flex flex-col gap-3 rounded-xl border bg-background/95 p-4 shadow-lift backdrop-blur sm:flex-row sm:items-center xl:sticky xl:bottom-4">
               <div className="flex-1 text-sm">
@@ -344,8 +413,25 @@ export default function Studio() {
           {/* ---------------- everything about this version ---------------- */}
           <div className="space-y-4 xl:sticky xl:top-20 xl:self-start">
             <Card className="p-4">
-              <h2 className="mb-3 text-sm font-semibold">ATS compatibility</h2>
-              <AtsPanel changes={changes} decisions={decisions} />
+              <h2 className="mb-3 text-sm font-semibold">ATS score</h2>
+              <AtsScorePanel result={ats} onJump={jumpTo} hasJob={!!job} />
+            </Card>
+
+            <Card className="p-4">
+              <h2 className="mb-3 text-sm font-semibold">Keywords in this posting</h2>
+              <KeywordPanel
+                results={ats.keywords}
+                source={kwSource}
+                loading={kwLoading}
+                excerpt={excerpt}
+                roles={built.roles.map((r) => ({ id: r.id, title: r.title, company: r.company }))}
+                onJump={jumpTo}
+                onAddLine={addLine}
+                onAddSkill={addSkill}
+                pasted={!!pasted}
+                onPaste={setPosting}
+                onClearPaste={() => setPosting(null)}
+              />
             </Card>
 
             <Card className="p-0 sm:p-0">

@@ -6,7 +6,7 @@ import { ScoreBar, ScoreRing } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { TranslatorRow } from "@/components/TranslatorRows";
-import { ATS_MAX, BASE_ATS, CHANGE_TYPE_LABEL, type ResumeVersion, type TailorChange } from "@/data/resumeStudio";
+import { CHANGE_TYPE_LABEL, type ResumeVersion, type TailorChange } from "@/data/resumeStudio";
 import { SEVERITY_LABEL } from "@/data/gaps";
 import { Textarea } from "@/components/ui/textarea";
 import { BULLET_TRANSLATIONS, TRANSLATOR_EXAMPLE, translateFreeText } from "@/data/translator";
@@ -14,7 +14,6 @@ import { api } from "@/live/api";
 import { useStore } from "@/store/AppStore";
 import { bulletById } from "@/data/user";
 import type { Job, TargetField } from "@/data/jobs";
-import { atsScore } from "@/lib/selectors";
 import { wordDiff } from "@/lib/diff";
 import { cn } from "@/lib/utils";
 
@@ -83,48 +82,6 @@ export function ChangeCard({ c, decision, onDecide }: { c: TailorChange; decisio
         )}
       </div>
     </li>
-  );
-}
-
-/** Replaces the old Truth Mode panel: the same honesty, said as a number that moves. */
-export function AtsPanel({ changes, decisions }: { changes: TailorChange[]; decisions: Record<string, string> }) {
-  const s = atsScore(changes, decisions);
-  const before = BASE_ATS.keywords + BASE_ATS.formatting + BASE_ATS.structure + BASE_ATS.length + BASE_ATS.fileType;
-  const rows = [
-    { k: "Keyword coverage", v: s.keywords, max: ATS_MAX.keywords, note: "Terms from the posting that appear in your resume." },
-    { k: "Formatting safety", v: s.formatting, max: ATS_MAX.formatting, note: "No tables or text boxes." },
-    { k: "Section structure", v: s.structure, max: ATS_MAX.structure, note: "Headings screening software recognizes." },
-    { k: "Length", v: s.length, max: ATS_MAX.length, note: "One page. Bullets under two lines." },
-    { k: "File type", v: s.fileType, max: ATS_MAX.fileType, note: "PDF with real text, not an image." },
-  ];
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-3">
-        <ScoreRing value={s.total} size={72} stroke={6} sub="of 100" label="ATS compatibility score" />
-        <div className="text-sm">
-          <div className="text-muted-foreground">
-            Before tailoring <span className="num font-semibold text-foreground">{before}</span>
-          </div>
-          <div className={cn("num font-semibold", s.total > before ? "text-success" : "text-muted-foreground")}>
-            {s.total > before ? `+${s.total - before} from what you kept` : "Use a suggestion to raise it"}
-          </div>
-        </div>
-      </div>
-      <ul className="space-y-3">
-        {rows.map((r) => (
-          <li key={r.k}>
-            <div className="mb-1 flex justify-between text-[13px]">
-              <span className="font-medium">{r.k}</span>
-              <span className="num text-muted-foreground">
-                <span className="font-semibold text-foreground">{r.v}</span>/{r.max}
-              </span>
-            </div>
-            <ScoreBar value={r.v} max={r.max} height={5} label={r.k} />
-            <p className="mt-1 text-xs text-muted-foreground">{r.note}</p>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 

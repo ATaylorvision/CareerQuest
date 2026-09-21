@@ -2,7 +2,7 @@ import type { AppState } from "@/store/AppStore";
 import { JOBS, jobById, type Job } from "@/data/jobs";
 import { GAPS, type Gap } from "@/data/gaps";
 import type { Application } from "@/data/applications";
-import { ATS_MAX, BASE_ATS, NORTHVALE_CHANGES, type TailorChange } from "@/data/resumeStudio";
+import { NORTHVALE_CHANGES, type TailorChange } from "@/data/resumeStudio";
 
 export const isPro = (s: AppState) => s.billing.tier === "trial" || s.billing.tier === "pro";
 
@@ -135,21 +135,6 @@ export function changesForJob(job: Job): TailorChange[] {
     out.push({ ...c, id: `${job.id}-${c.id}`, reason: c.reason.replace(/this posting|this job|this role/gi, `the ${job.title} posting`) });
   });
   return out;
-}
-
-export function atsScore(changes: TailorChange[], decisions: Record<string, string>) {
-  const acc = { ...BASE_ATS };
-  changes.forEach((c) => {
-    if (decisions[c.id] !== "accepted") return;
-    acc.keywords += c.ats.keywords ?? 0;
-    acc.structure += c.ats.structure ?? 0;
-    acc.length += c.ats.length ?? 0;
-  });
-  acc.keywords = Math.min(ATS_MAX.keywords, acc.keywords);
-  acc.structure = Math.min(ATS_MAX.structure, acc.structure);
-  acc.length = Math.min(ATS_MAX.length, acc.length);
-  const total = acc.keywords + acc.formatting + acc.structure + acc.length + acc.fileType;
-  return { ...acc, total };
 }
 
 export function jobOrThrow(id: string) {

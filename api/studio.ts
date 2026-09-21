@@ -1,5 +1,6 @@
 import { HttpError, admin, body, route, quota, type AuthedUser } from "./_lib/http.js";
 import { DEEP_MODEL, FAST_MODEL, numbersSupported, structured } from "./_lib/claude.js";
+import { containsRun, extractKeywordsBasic, tokens, verbatim } from "../src/lib/keywords.js";
 
 /**
  * Resume Studio, Cover Letter Studio and Interview Prep, in one function.
@@ -376,6 +377,94 @@ async function feedback(user: AuthedUser, questionText: string, answer: string) 
   };
 }
 
+/* ---------------- Posting keywords ---------------- */
+
+const KEYWORDS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["must", "nice"],
+  properties: { must: strList, nice: strList },
+} as const;
+
+const KEYWORDS_SYSTEM = `You pull out the terms an applicant screening system would search for in one job posting.
+
+- must: 8 to 14 concrete skills, tools, software, certifications, licences, methods and domain phrases the posting REQUIRES.
+- nice: up to 8 more that the posting only prefers, or mentions in passing.
+- Each term is one to four words, copied exactly as the posting writes it. Do not paraphrase and do not combine.
+- Concrete and searchable only. Leave out company names, benefits, places, and filler such as "team player", "fast paced", "self starter", "passionate" or "detail oriented".
+- Never add a term the posting does not contain.`;
+
+/**
+ * The terms a posting asks for. A model reads it once and the answer is kept on
+ * the job, so the cost is paid per posting and not per person. Every term the
+ * model returns has to appear in the posting, and if it fails or returns too
+ * little, the free extractor fills in.
+ */
+async function keywords(user: AuthedUser, jobId: string) {
+  const db = admin();
+  const { data: job } = await db.from("jobs").select("id, title, description, keywords").eq("id", jobId).maybeSingle();
+  if (!job) throw new HttpError(404, "We could not find that listing.");
+
+  const cached = job.keywords as { must?: string[]; nice?: string[] } | null;
+  if (cached?.must?.length || cached?.nice?.length) return { jobId, must: cached.must ?? [], nice: cached.nice ?? [], source: "cache" as const };
+
+  const text = ((job.description as string | null) ?? "").trim();
+  const basic = extractKeywordsBasic({ body: `${job.title}
+${text}` });
+  // Too little to be worth a model, and not saved, so a fuller description can replace it.
+  if (text.length < 300) return { jobId, ...basic, source: "basic" as const };
+
+  try {
+    await quota(user, "studio-keywords", 60, "reading job postings");
+    const out = await structured<{ must: string[]; nice: string[] }>({
+      model: FAST_MODEL,
+      system: KEYWORDS_SYSTEM,
+      content: [{ type: "text", text: `TITLE: ${job.title}
+
+POSTING:
+${text.slice(0, 7000)}` }],
+      schema: KEYWORDS_SCHEMA as unknown as Record<string, unknown>,
+      maxTokens: 1200,
+      effort: "low",
+    });
+
+    const hay = tokens(`${job.title}
+${text}`);
+    const key = (t: string) => tokens(t).join(" ");
+    const grounded = (t: string) => {
+      const run = tokens(t);
+      return run.length > 0 && run.length <= 5 && containsRun(hay, run);
+    };
+    const dedupe = (list: string[], skip: Set<string> = new Set()) => {
+      const seen = new Set(skip);
+      const kept: string[] = [];
+      for (const raw of list) {
+        const asked = raw.trim();
+        if (!asked || asked.length > 48 || !grounded(asked)) continue;
+        // Show the posting's own words, not a near miss the model made up.
+        const t = verbatim(`${job.title}
+${text}`, asked) ?? asked;
+        if (t.length > 48 || seen.has(key(t))) continue;
+        seen.add(key(t));
+        kept.push(t);
+      }
+      return kept;
+    };
+
+    let must = dedupe(out.must).slice(0, 14);
+    // Thin or ungrounded answers are topped up from the posting itself.
+    if (must.length < 4) must = dedupe([...must, ...basic.must]).slice(0, 14);
+    const nice = dedupe([...out.nice, ...basic.nice], new Set(must.map(key))).slice(0, 8);
+
+    await db.from("jobs").update({ keywords: { must, nice, v: 1 } }).eq("id", job.id);
+    return { jobId, must, nice, source: "ai" as const };
+  } catch (e) {
+    // A daily limit or a model error must not leave the panel empty.
+    console.error("[keywords]", e instanceof Error ? e.message : e);
+    return { jobId, ...basic, source: "basic" as const };
+  }
+}
+
 /* ---------------- routing ---------------- */
 
 interface Payload {
@@ -407,6 +496,8 @@ export default route(async (req, _res, user) => {
       return questions(user, p.jobId ?? "");
     case "feedback":
       return feedback(user, p.question ?? "", p.answer ?? "");
+    case "keywords":
+      return keywords(user, p.jobId ?? "");
     default:
       throw new HttpError(400, "Unknown studio action.");
   }

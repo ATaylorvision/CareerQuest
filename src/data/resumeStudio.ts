@@ -126,8 +126,6 @@ export const BLOCKED_EDITS = [
   { text: "Add \"WMS (Manhattan, Blue Yonder)\"", why: "Not in your resume. Listed in Gaps we did not fill instead." },
 ];
 
-export const BASE_ATS = { keywords: 22, formatting: 18, structure: 12, length: 14, fileType: 10 };
-export const ATS_MAX = { keywords: 40, formatting: 20, structure: 15, length: 15, fileType: 10 };
 
 export interface ResumeVersion {
   id: string;

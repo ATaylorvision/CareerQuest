@@ -69,6 +69,10 @@ export interface AppState {
     letterTemplateId: string;
     /** Wording typed straight onto the document, per job then per field. Kept per version on purpose. */
     edits?: Record<string, Record<string, string>>;
+    /** Lines the person added under a role, per job then per role. Their own words, so they are never marked as suggested. */
+    added?: Record<string, Record<string, { id: string; text: string }[]>>;
+    /** A full posting pasted in where the listing only gave an excerpt. Saved with the rest of the working state, so private to the account and capped in size. */
+    postingText?: Record<string, string>;
     /** Name and contact details belong to the account, so every version shares them. */
     contact?: { name?: string; email?: string; phone?: string; location?: string };
   };

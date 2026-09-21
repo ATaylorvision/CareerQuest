@@ -60,6 +60,8 @@ export interface Job {
   live?: boolean;
   applyUrl?: string;
   descriptionText?: string;
+  /** Terms the posting asks for, read once and kept on the job. Absent until first read. */
+  keywords?: { must: string[]; nice: string[] } | null;
   reqChecks?: RequirementCheck[];
   translations?: LiveTranslation[];
   storyLine?: string;

@@ -13,7 +13,8 @@
     "push-env": "node scripts/push-env.mjs",
     "e2e:admin": "node scripts/e2e-admin.mjs",
     "e2e:studio": "node scripts/e2e-studio.mjs",
-    "security": "node scripts/security-check.mjs"
+    "security": "node scripts/security-check.mjs",
+    "test:ats": "tsx scripts/test-ats.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

@@ -129,6 +129,24 @@ try {
   const weak = await call(token, { action: "feedback", question: FIXED_Q, answer: "I am a hard worker and I always do my best. I like fixing things when they go wrong." });
   ok("a vague answer scores low", (weak.json?.score ?? 100) < 50, `scored ${weak.json?.score}, expected under 50`);
 
+  console.log("\n[5b] Posting keywords");
+  // Prefer a posting nobody has read yet, so the model path is what gets tested.
+  const { data: fresh } = await db.from("jobs").select("id, title, description").is("keywords", null).gt("description", "").limit(1).maybeSingle();
+  const kwJob = fresh ?? (await db.from("jobs").select("id, title, description").gt("description", "").limit(1).maybeSingle()).data;
+  const k1 = await call(token, { action: "keywords", jobId: kwJob.id });
+  ok("keywords come back as required and preferred lists", k1.status === 200 && Array.isArray(k1.json?.must) && Array.isArray(k1.json?.nice), `${k1.json?.must?.length} required, ${k1.json?.nice?.length} preferred, source ${k1.json?.source}`);
+  ok("a posting yields some required terms", (k1.json?.must?.length ?? 0) >= 3);
+  // Every term must come from the posting. Compared loosely on word stems.
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
+  const haystack = norm(`${kwJob.title} ${kwJob.description}`);
+  const ungrounded = [...(k1.json?.must ?? []), ...(k1.json?.nice ?? [])].filter((t) => !norm(t).split(" ").filter(Boolean).every((w) => haystack.includes(w.slice(0, Math.max(4, w.length - 2)))));
+  ok("every term traces back to the posting", ungrounded.length === 0, ungrounded.length ? `not found: ${ungrounded.join(", ")}` : "none invented");
+  ok("no term is a paragraph", [...(k1.json?.must ?? []), ...(k1.json?.nice ?? [])].every((t) => t.length <= 48));
+  const k2 = await call(token, { action: "keywords", jobId: kwJob.id });
+  ok("the second read is served from the saved copy", k2.json?.source === "cache" || k1.json?.source === "basic", `source ${k2.json?.source}`);
+  ok("the same terms come back", JSON.stringify(k2.json?.must) === JSON.stringify(k1.json?.must) || k1.json?.source === "basic");
+  ok("an unknown job is a 404, not a crash", (await call(token, { action: "keywords", jobId: "nope:0" })).status === 404);
+
   console.log("\n[6] Free plan metering");
   const spend = [];
   for (let i = 0; i < 3; i++) spend.push((await call(token, { action: "letter", jobId: job.id, tone: "direct", addressGaps: [] })).status);

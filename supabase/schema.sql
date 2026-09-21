@@ -474,3 +474,9 @@ end $$;
 
 revoke all on function public.take_quota(uuid, text, integer) from public, anon, authenticated;
 grant execute on function public.take_quota(uuid, text, integer) to service_role;
+
+-- ---------------------------------------------------------------
+-- The terms a posting asks for, read once and kept. Shared like the
+-- rest of the job cache: it describes the posting, not any person.
+-- ---------------------------------------------------------------
+alter table public.jobs add column if not exists keywords jsonb;

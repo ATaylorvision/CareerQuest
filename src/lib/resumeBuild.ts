@@ -15,6 +15,8 @@ export interface ManualEdits {
   fields?: Record<string, string>;
   /** Shared by every version, because these belong to the account rather than one application. */
   contact?: { name?: string; email?: string; phone?: string; location?: string };
+  /** Lines the person added under a role, keyed by role id. */
+  added?: Record<string, { id: string; text: string }[]>;
 }
 
 const ROLE_FIELDS = ["title", "company", "location", "start", "end"] as const;
@@ -64,10 +66,17 @@ export function buildResume(changes: TailorChange[], decisions: Record<string, s
   put("skills", (v) => void (r.skills = v.split(/,\s*(?![^()]*\))/).map((x) => x.trim()).filter(Boolean)));
   put("education", (v) => void (r.education = v.split(/\s*\|\s*/).map((x) => x.trim()).filter(Boolean)));
   put("certifications", (v) => void (r.certifications = v.split(/\s*\|\s*/).map((x) => x.trim()).filter(Boolean)));
+  const addedIds = new Set<string>();
   for (const role of r.roles) {
+    for (const a of manual.added?.[role.id] ?? []) {
+      role.bullets.push({ id: a.id, text: a.text });
+      addedIds.add(a.id);
+    }
     for (const f of ROLE_FIELDS) put(`${role.id}.${f}`, (v) => void (role[f] = v));
     role.bullets = role.bullets
       .map((b) => {
+        // A line the person added is theirs from the start, even if never retyped.
+        if (addedIds.has(b.id)) editedIds.add(b.id);
         const v = fields[b.id];
         if (v === undefined) return b;
         editedIds.add(b.id);

@@ -15,6 +15,8 @@ export function EditableText({
   as: Tag = "span",
   multiline,
   placeholder,
+  fieldId,
+  onLive,
 }: {
   value: string;
   onCommit: (next: string) => void;
@@ -24,12 +26,17 @@ export function EditableText({
   multiline?: boolean;
   /** Shown in place of nothing, so a blank line is still something you can click. */
   placeholder?: string;
+  /** Lets other panels find this line and jump to it. */
+  fieldId?: string;
+  /** Called with the text as it is typed, and with null once the line is committed. Scoring reads it live. */
+  onLive?: (text: string | null) => void;
 }) {
   const ref = useRef<HTMLElement>(null);
 
   const commit = () => {
     const next = (ref.current?.textContent ?? "").replace(/\s+/g, " ").trim();
     if (next !== value) onCommit(next);
+    onLive?.(null);
   };
 
   return (
@@ -43,6 +50,8 @@ export function EditableText({
       tabIndex={0}
       spellCheck
       data-placeholder={placeholder}
+      data-field={fieldId}
+      onInput={() => onLive?.((ref.current?.textContent ?? "").replace(/\s+/g, " ").trim())}
       onBlur={commit}
       onKeyDown={(e: React.KeyboardEvent) => {
         if (e.key === "Escape") {
