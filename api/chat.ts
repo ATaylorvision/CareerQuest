@@ -1,4 +1,4 @@
-import { HttpError, admin, body, route } from "./_lib/http.js";
+import { HttpError, admin, body, route, quota } from "./_lib/http.js";
 import { FAST_MODEL, claude } from "./_lib/claude.js";
 
 const MONTHLY_CAP = 1500;
@@ -25,6 +25,7 @@ export default route(
     const convo = messages.slice(-24).map((m) => ({ role: m.role === "assistant" ? ("assistant" as const) : ("user" as const), content: String(m.content).slice(0, 6000) }));
     if (convo[convo.length - 1].role !== "user") throw new HttpError(400, "The last message must be from you.");
 
+    await quota(user, "chat", 150, "messages to Wren");
     const db = admin();
     const month = new Date().toISOString().slice(0, 8) + "01";
     const { data: usage } = await db.from("usage_counters").select("copilot_messages").eq("user_id", user.id).eq("month", month).maybeSingle();

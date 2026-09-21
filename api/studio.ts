@@ -1,4 +1,4 @@
-import { HttpError, admin, body, route, type AuthedUser } from "./_lib/http.js";
+import { HttpError, admin, body, route, quota, type AuthedUser } from "./_lib/http.js";
 import { DEEP_MODEL, FAST_MODEL, numbersSupported, structured } from "./_lib/claude.js";
 
 /**
@@ -389,6 +389,15 @@ interface Payload {
 
 export default route(async (req, _res, user) => {
   const p = body<Payload>(req);
+  // Paid users have no monthly cap, so each kind of work also has a daily one.
+  const DAILY: Record<string, [number, string]> = {
+    tailor: [40, "tailoring resumes"],
+    letter: [40, "writing cover letters"],
+    questions: [40, "preparing interview questions"],
+    feedback: [80, "interview answer feedback"],
+  };
+  const d = DAILY[p.action ?? ""];
+  if (d) await quota(user, `studio-${p.action}`, d[0], d[1]);
   switch (p.action) {
     case "tailor":
       return tailor(user, p.jobId ?? "");

@@ -443,3 +443,34 @@ alter table public.profiles add column if not exists home_lat double precision;
 alter table public.profiles add column if not exists home_lng double precision;
 -- The home base string those coordinates belong to, so moving re-runs the lookup.
 alter table public.profiles add column if not exists home_geocoded_for text;
+
+-- ---------------------------------------------------------------
+-- Daily allowance per person, per kind of work. Every endpoint that
+-- spends money (Anthropic, Adzuna) takes from this before it runs.
+-- The take is one atomic statement, so two requests arriving at once
+-- cannot both slip under the limit.
+-- ---------------------------------------------------------------
+create table if not exists public.api_usage (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  day date not null default (now() at time zone 'utc')::date,
+  bucket text not null,
+  n integer not null default 0,
+  primary key (user_id, day, bucket)
+);
+alter table public.api_usage enable row level security;
+-- No policy on purpose: only the service role, which the server uses, touches this.
+
+create or replace function public.take_quota(p_user uuid, p_bucket text, p_limit integer)
+returns boolean language plpgsql security definer set search_path = public as $$
+declare taken integer;
+begin
+  insert into public.api_usage as u (user_id, day, bucket, n)
+  values (p_user, (now() at time zone 'utc')::date, p_bucket, 1)
+  on conflict (user_id, day, bucket)
+  do update set n = u.n + 1 where u.n < p_limit
+  returning u.n into taken;
+  return taken is not null;
+end $$;
+
+revoke all on function public.take_quota(uuid, text, integer) from public, anon, authenticated;
+grant execute on function public.take_quota(uuid, text, integer) to service_role;

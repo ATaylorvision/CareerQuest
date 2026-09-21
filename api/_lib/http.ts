@@ -39,6 +39,25 @@ export async function requireUser(req: VercelRequest): Promise<AuthedUser> {
   return { id: data.user.id, email: data.user.email ?? null, emailConfirmed: !!data.user.email_confirmed_at };
 }
 
+/**
+ * Takes one unit from a person's daily allowance for this kind of work, or
+ * refuses. Every endpoint that spends money calls this before it does anything.
+ * The count is one atomic statement in the database, so parallel requests
+ * cannot all slip under the limit.
+ *
+ * If the counter itself is unreachable this lets the request through: a broken
+ * counter should not take the whole product down. The cost of that is bounded
+ * by the monthly spend limit set with each provider.
+ */
+export async function quota(user: AuthedUser, bucket: string, limit: number, what = "that"): Promise<void> {
+  const { data, error } = await admin().rpc("take_quota", { p_user: user.id, p_bucket: bucket, p_limit: limit });
+  if (error) {
+    console.error("[quota]", bucket, error.message);
+    return;
+  }
+  if (data === false) throw new HttpError(429, `You have reached today's limit for ${what}. It resets at midnight UTC, and you have not lost anything.`);
+}
+
 type Handler = (req: VercelRequest, res: VercelResponse, user: AuthedUser) => Promise<unknown>;
 
 /** Wraps an endpoint: POST only, must be signed in, errors become clean JSON. */

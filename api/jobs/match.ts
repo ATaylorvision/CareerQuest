@@ -1,4 +1,4 @@
-import { HttpError, admin, body, route } from "../_lib/http.js";
+import { HttpError, admin, body, route, quota } from "../_lib/http.js";
 import { FAST_MODEL, numbersSupported, structured } from "../_lib/claude.js";
 import { GAPS } from "../../src/data/gaps.js";
 
@@ -154,6 +154,7 @@ const posting = (j: JobRow, chars: number) =>
   `<job id="${j.id}">\nTitle: ${j.title}\nCompany: ${j.company}\nLocation: ${j.location}\nSalary: ${j.salary_min ? `${j.salary_min} to ${j.salary_max} per year` : "not listed"}\nPosting text:\n${(j.description ?? "").slice(0, chars)}\n</job>`;
 
 export default route(async (req, _res, user) => {
+  await quota(user, "match", 200, "reading job matches");
   const { ids, mode = "score", force } = body<{ ids?: string[]; mode?: "score" | "detail"; force?: boolean }>(req);
   const max = mode === "score" ? 15 : 2;
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > max) throw new HttpError(400, `Send between 1 and ${max} job ids.`);

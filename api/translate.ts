@@ -1,4 +1,4 @@
-import { HttpError, admin, body, route } from "./_lib/http.js";
+import { HttpError, admin, body, route, quota } from "./_lib/http.js";
 import { FAST_MODEL, numbersSupported, structured } from "./_lib/claude.js";
 
 const FIELD_NAMES: Record<string, string> = {
@@ -37,6 +37,7 @@ Rules:
 - Warm, direct, plain. No exclamation points. Never use em dashes.`;
 
 export default route(async (req, _res, user) => {
+  await quota(user, "translate", 80, "the Career Translator");
   const { target, items, prevField } = body<{ target?: string; items?: string[]; prevField?: string }>(req);
   const field = FIELD_NAMES[target ?? ""];
   if (!field) throw new HttpError(400, "Pick a target field.");

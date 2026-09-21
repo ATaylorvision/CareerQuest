@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import mammoth from "mammoth";
-import { HttpError, admin, body, route } from "../_lib/http.js";
+import { HttpError, admin, body, route, quota } from "../_lib/http.js";
 import { DEEP_MODEL, structured } from "../_lib/claude.js";
 
 const MAX_BYTES = 3_200_000;
@@ -61,6 +61,7 @@ interface Parsed {
 }
 
 export default route(async (req, _res, user) => {
+  await quota(user, "parse", 10, "resume uploads");
   const { fileName, mime, data } = body<{ fileName?: string; mime?: string; data?: string }>(req);
   if (!data || !fileName) throw new HttpError(400, "No file was received.");
   const buf = Buffer.from(data, "base64");

@@ -1,9 +1,10 @@
-import { HttpError, admin, body, route } from "../_lib/http.js";
+import { HttpError, admin, body, route, quota } from "../_lib/http.js";
 import { checkCompanySite, findBoard } from "../_lib/ats.js";
 import { computeLegitimacy, type LegitSignals } from "../../src/lib/legit.js";
 
 /** "Verify on company site": re-checks the employer's own careers page right now. */
-export default route(async (req) => {
+export default route(async (req, _res, user) => {
+  await quota(user, "verify", 120, "checking employer sites");
   const { jobId } = body<{ jobId?: string }>(req);
   if (!jobId) throw new HttpError(400, "Which job?");
   const db = admin();

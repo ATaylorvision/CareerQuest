@@ -1,4 +1,4 @@
-import { admin, body, route } from "../_lib/http.js";
+import { admin, body, route, quota } from "../_lib/http.js";
 import { adzunaSearch, jsearchSearch, looksEvergreen, looksLikeAgency, remoteType, type RawJob } from "../_lib/sources.js";
 import { checkCompanySite, type SiteCheck } from "../_lib/ats.js";
 import { computeLegitimacy, type LegitSignals } from "../../src/lib/legit.js";
@@ -48,6 +48,7 @@ const tag = (p: Promise<RawJob[]>, scoped: boolean): Promise<Found[]> =>
   p.then((rows) => rows.map((r) => ({ ...r, scoped }))).catch((): Found[] => []);
 
 export default route(async (req, _res, user) => {
+  await quota(user, "search", 15, "job searches");
   const { extraQuery } = body<{ extraQuery?: string }>(req);
   const db = admin();
 

@@ -14,7 +14,7 @@ import { JOBS, jobById, type Job } from "@/data/jobs";
 import { SEVERITY_LABEL } from "@/data/gaps";
 import { BASE_RESUME, bulletById } from "@/data/user";
 import { FREE_LIMITS, isPro } from "@/lib/selectors";
-import { downloadText } from "@/lib/resumeBuild";
+import { downloadText, printHtml } from "@/lib/resumeBuild";
 import { LETTER_TEMPLATES, renderLetterHtml, type LetterContext } from "@/data/letterTemplates";
 import { TemplatePicker } from "@/components/TemplatePicker";
 import { api, ApiError } from "@/live/api";
@@ -414,11 +414,8 @@ export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
                   size="xs"
                   variant="ghost"
                   onClick={() => {
-                    const w = window.open("", "_blank", "width=860,height=1040");
-                    if (!w) return toast.error("Your browser blocked the print window. Allow pop ups and try again.");
                     const html = renderLetterHtml(letterCtx, state.resume.letterTemplateId, `${state.profile.name} cover letter`);
-                    w.document.write(html.replace("</body>", "<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body>"));
-                    w.document.close();
+                    if (!printHtml(html)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
                   }}
                 >
                   <Printer /> Print or PDF

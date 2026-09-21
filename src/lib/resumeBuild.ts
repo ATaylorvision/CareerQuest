@@ -122,14 +122,23 @@ export function downloadText(filename: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Opens the chosen layout in a print window. Returns false if a pop up blocker stopped it. */
-export function printResume(r: BuiltResume, title: string, templateId?: string, headline?: string) {
+/** Opens finished HTML in a print window. Returns false if a pop up blocker stopped it. */
+export function printHtml(html: string): boolean {
   const w = window.open("", "_blank", "width=860,height=1040");
   if (!w) return false;
-  const html = renderResumeHtml(r, templateId, title, headline);
-  // The print call is appended rather than baked into the template, so the
-  // same markup can be reused for the on screen previews without printing.
-  w.document.write(html.replace("</body>", "<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body>"));
+  w.document.write(html);
   w.document.close();
+  // The opener starts the print, rather than a script inside the document.
+  // That keeps inline scripts out of the page, which is what lets the site's
+  // content security policy refuse them everywhere. The load event may already
+  // have fired by now, so check for that instead of waiting on it forever.
+  const go = () => setTimeout(() => w.print(), 250);
+  if (w.document.readyState === "complete") go();
+  else w.addEventListener("load", go, { once: true });
   return true;
+}
+
+/** Opens the chosen layout in a print window. Returns false if a pop up blocker stopped it. */
+export function printResume(r: BuiltResume, title: string, templateId?: string, headline?: string) {
+  return printHtml(renderResumeHtml(r, templateId, title, headline));
 }

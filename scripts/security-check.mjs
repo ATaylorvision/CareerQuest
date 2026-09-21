@@ -169,7 +169,20 @@ try {
   const { data: myResume } = await aAgain.from("resumes").select("parsed").eq("is_base", true).maybeSingle();
   ok("A still sees their own resume", myResume?.parsed?.summary === "SECRET-A-SUMMARY");
 
-  console.log("\n[11] Signed out means no data at all");
+  console.log("\n[11] Paid endpoints cannot be run without limit");
+  // resume/parse allows 10 a day. An empty body is refused before any AI call,
+  // so this costs nothing while still proving the counter bites.
+  const codes = [];
+  for (let i = 0; i < 12; i++) codes.push((await apiAs(b.token, "resume/parse", {})).status);
+  ok("the 11th upload in a day is refused", codes[9] === 400 && codes[10] === 429, `statuses: ${codes.join(" ")}`);
+  const stranger = await makeUser("c");
+  ok("one person's limit does not touch another's", (await apiAs(stranger.token, "resume/parse", {})).status === 400);
+  const direct = await b.client.rpc("take_quota", { p_user: b.id, p_bucket: "x", p_limit: 5 });
+  ok("a browser cannot call the quota function itself", !!direct.error, direct.error?.message?.slice(0, 50));
+  const { error: cannotWrite } = await b.client.from("api_usage").insert({ user_id: b.id, bucket: "resume-parse", n: 0 });
+  ok("a browser cannot write its own usage row", !!cannotWrite, cannotWrite?.message?.slice(0, 50));
+
+  console.log("\n[12] Signed out means no data at all");
   const anon = createClient(URL, ANON, { auth: { persistSession: false } });
   let anonLeak = 0;
   for (const t of tables) {
