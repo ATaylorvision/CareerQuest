@@ -1,6 +1,7 @@
 import { HttpError, admin, body, route, quota } from "../_lib/http.js";
 import { FAST_MODEL, numbersSupported, structured } from "../_lib/claude.js";
 import { GAPS } from "../../src/data/gaps.js";
+import { haversineMiles } from "../_lib/geo.js";
 
 /**
  * Two stages, so the first results show up fast:
@@ -162,9 +163,9 @@ export default route(async (req, _res, user) => {
 
   const [{ data: resumeRow }, { data: profile }, { data: jobs }, { data: existing }] = await Promise.all([
     db.from("resumes").select("parsed").eq("user_id", user.id).eq("is_base", true).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    db.from("profiles").select("situation, prev_field, target_field").eq("id", user.id).single(),
+    db.from("profiles").select("situation, prev_field, target_field, anchors").eq("id", user.id).single(),
     // Jobs someone pasted in are private to them, so anyone else asking for one gets nothing back.
-    db.from("jobs").select("id, title, company, location, description, salary_min, salary_max").in("id", ids).or(`owner_id.is.null,owner_id.eq.${user.id}`),
+    db.from("jobs").select("id, title, company, location, description, salary_min, salary_max, latitude, longitude, remote_type").in("id", ids).or(`owner_id.is.null,owner_id.eq.${user.id}`),
     db.from("job_matches").select("job_id, breakdown, why, gaps, translator, career_changer_friendly, score").eq("user_id", user.id).in("job_id", ids),
   ]);
   if (!resumeRow?.parsed) throw new HttpError(400, "Upload your resume first so we can match against it.");
@@ -220,6 +221,11 @@ export default route(async (req, _res, user) => {
       const industry = clamp(r.industry);
       const transferable = clamp(r.transferable);
       const prev = haveMatch.get(job.id);
+      // How far this is from the nearest place the person named, saved so the Matches page can
+      // hold to their commute range without measuring it again.
+      const anchors = Array.isArray(profile?.anchors) ? (profile!.anchors as { lat: number; lng: number }[]) : [];
+      const j = job as unknown as { latitude: number | null; longitude: number | null; remote_type: string | null };
+      const distance = j.remote_type === "remote" || j.latitude == null || j.longitude == null || !anchors.length ? null : Math.round(Math.min(...anchors.map((a) => haversineMiles(a, { lat: j.latitude!, lng: j.longitude! }))));
       const why = usable(r.why) && numbersSupported(r.why, resumeText, job.description ?? "", job.title) ? r.why : "We could not read enough of this posting to say more. Open it to judge the fit yourself.";
       rows.push({
         user_id: user.id,
@@ -236,6 +242,7 @@ export default route(async (req, _res, user) => {
         },
         career_changer_friendly: !!r.career_changer_friendly,
         dismissed: false,
+        distance_miles: distance,
         computed_at: new Date().toISOString(),
       });
     }

@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Bookmark, BookmarkCheck, Clock3, EyeOff, Languages, MapPin, TrendingDown, TrendingUp, Users, Wallet, Sparkle } from "lucide-react";
 import { CompanyLogo, ScoreRing } from "@/components/common";
-import { LegitBadgeView, Pill } from "@/components/status";
+import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { salaryText, type Job } from "@/data/jobs";
 import { COLUMNS } from "@/data/applications";
@@ -88,7 +88,6 @@ export function JobCard({ job, compact, index = 0 }: { job: Job; compact?: boole
           </div>
 
           <div className="relative z-[1] mt-3 flex flex-wrap items-center gap-1.5">
-            <LegitBadgeView badge={job.legit.badge} score={job.legit.score} size="xs" />
             <Pill size="xs" tone={job.postedDaysAgo <= 3 ? "primary" : "muted"} icon={Clock3}>
               {job.postedDaysAgo === 0 ? "Posted today" : `Posted ${relDays(job.postedDaysAgo).toLowerCase()}`}
             </Pill>

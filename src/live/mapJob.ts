@@ -33,6 +33,9 @@ export interface MatchRow {
   gaps: Gap[] | null;
   career_changer_friendly: boolean | null;
   dismissed: boolean;
+  /** When this was first shown to the person, and how far it is from the nearest place they named. */
+  first_shown_at?: string | null;
+  distance_miles?: number | null;
   translator: {
     field?: string;
     category?: string;
@@ -129,7 +132,8 @@ export function rowToJob(row: JobRow, match: MatchRow): Job {
     legit: row.legit ?? { score: 50, badge: "active", factors: [] },
     breakdown: match.breakdown ?? { experience: match.score, skills: match.score, industry: match.score, transferable: match.score },
     match: match.score,
-    isNew: daysAgo <= 2,
+    // New means new to this person, which is when it first reached them and not when it was posted.
+    isNew: match.first_shown_at ? Date.now() - new Date(match.first_shown_at).getTime() <= 3 * 86_400_000 : daysAgo <= 2,
     live: true,
     applyUrl: row.apply_url ?? undefined,
     descriptionText: desc,
@@ -139,7 +143,8 @@ export function rowToJob(row: JobRow, match: MatchRow): Job {
     storyLine: t.story ?? "",
     atsProvider: row.ats_provider ?? undefined,
     checkedAt: row.company_site_checked_at ?? undefined,
-    distanceMiles: row.remote_type === "remote" ? null : milesFromHome(row.latitude, row.longitude),
+    distanceMiles: row.remote_type === "remote" ? null : (match.distance_miles ?? milesFromHome(row.latitude, row.longitude)),
+    shownAt: match.first_shown_at ?? undefined,
     // Marks jobs whose full analysis (translations, requirement checks, gaps) has not run yet.
     ...(t.enriched ? {} : { translations: undefined }),
   };

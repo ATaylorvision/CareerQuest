@@ -1,5 +1,6 @@
 import type { AppState } from "@/store/AppStore";
 import { JOBS, jobById, type Job } from "@/data/jobs";
+import { visibleFor } from "@/lib/matchRules";
 import { GAPS, type Gap } from "@/data/gaps";
 import type { Application } from "@/data/applications";
 import { NORTHVALE_CHANGES, type TailorChange } from "@/data/resumeStudio";
@@ -83,7 +84,7 @@ export function appForJob(s: AppState, jobId: string) {
 }
 
 export function visibleJobs(s: AppState) {
-  return JOBS.filter((j) => !j.imported && j.legit.score >= s.legitThreshold && !s.dismissedJobIds.includes(j.id));
+  return visibleFor(s);
 }
 
 /* ---------------- Studio ---------------- */

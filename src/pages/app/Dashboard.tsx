@@ -31,6 +31,7 @@ import { buildResume, downloadText, printResume, resumeToText } from "@/lib/resu
 import { buildPlan, INTENSITY_META } from "@/data/plan";
 import { buildLivePlan } from "@/lib/livePlan";
 import { jobById, JOBS } from "@/data/jobs";
+import { visibleFor } from "@/lib/matchRules";
 import { gapAggregate, streakOf, visibleJobs } from "@/lib/selectors";
 import { daysUntilWeekday, fmtDate, diffDays, startOfToday } from "@/lib/date";
 import { useTheme } from "@/hooks/useTheme";
@@ -155,7 +156,7 @@ export default function Dashboard() {
   const offer = state.applications.find((a) => a.column === "offer");
 
   const open = visibleJobs(state);
-  const newMatches = JOBS.filter((j) => !j.imported && j.isNew && j.legit.score >= state.legitThreshold).slice(0, 3);
+  const newMatches = visibleFor(state).filter((j) => j.isNew).slice(0, 3);
   const isSunday = startOfToday().getDay() === 0;
   const smallest = [...plan].filter((p) => !state.planDone[p.id]).sort((a, b) => a.minutes - b.minutes)[0];
   const w = state.weekly;

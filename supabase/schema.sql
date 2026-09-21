@@ -509,3 +509,32 @@ end $$;
 update public.applications a set status = 'rejected'
   where a.status = 'closed' and exists (select 1 from public.application_events e where e.application_id = a.id and e.type = 'rejected');
 update public.applications set status = 'withdrawn' where status = 'closed';
+
+-- ---------------------------------------------------------------
+-- Matches: when each one was first shown to the person, how far it is
+-- from the nearest place they named, and a cache of place lookups.
+-- ---------------------------------------------------------------
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'job_matches' and column_name = 'first_shown_at') then
+    alter table public.job_matches add column first_shown_at timestamptz not null default now();
+    -- Matches that already exist were first shown when they were first scored.
+    update public.job_matches set first_shown_at = computed_at;
+  end if;
+end $$;
+create index if not exists job_matches_shown_idx on public.job_matches (user_id, first_shown_at desc);
+alter table public.job_matches add column if not exists distance_miles integer;
+
+-- Every place the person said they would work, with coordinates, so distance can be measured from the nearest one.
+alter table public.profiles add column if not exists anchors jsonb not null default '[]';
+
+-- "City, ST" to coordinates. Written only by our server.
+create table if not exists public.geo_cache (
+  place text primary key,
+  lat double precision,
+  lng double precision,
+  found boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table public.geo_cache enable row level security;
+revoke all on public.geo_cache from anon, authenticated;

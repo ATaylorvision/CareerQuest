@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Eye, EyeOff, Loader2, Minus, Plus, RotateCcw, Scissors, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, Loader2, Minus, Plus, RotateCcw, Scissors, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { clampSize, DEFAULT_FORMAT, FONTS, MARGINS, MAX_SIZE, MIN_SIZE, PAGE_H, PAGE_W, SPACINGS, type ResumeFormat } from "@/lib/resumeFormat";
@@ -145,9 +145,7 @@ export function FormatBar({ format, onChange, baseSize, lockedMargins, fit, allo
 
       {/* how full the page is */}
       <div role="status" aria-live="polite" className="text-sm">
-        {!fit ? (
-          <span className="text-muted-foreground">Measuring your page</span>
-        ) : over ? (
+        {!fit ? null : over ? (
           <div className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-soft p-2.5">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
             <span>
@@ -163,11 +161,7 @@ export function FormatBar({ format, onChange, baseSize, lockedMargins, fit, allo
               Add a line
             </Button>
           </div>
-        ) : (
-          <span className="flex items-center gap-1.5 text-success">
-            <CheckCircle2 className="h-4 w-4" aria-hidden /> {fit.pages === 1 ? "Fits on one page" : `Fits on ${fit.pages} pages`}, <span className="num">{Math.round(fit.fill * 100)}%</span> full
-          </span>
-        )}
+        ) : null}
         {note && <p className="mt-1.5 text-xs text-muted-foreground">{note}</p>}
       </div>
 

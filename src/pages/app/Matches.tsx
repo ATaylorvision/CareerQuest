@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff, Filter, Loader2, RefreshCcw, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Sparkle } from "lucide-react";
+import { Filter, Loader2, RefreshCcw, RotateCcw, Search, SlidersHorizontal, Sparkle } from "lucide-react";
 import { PageHeader, Chip, EmptyState } from "@/components/common";
 import { JobCard } from "@/components/JobCard";
-import { LegitBadgeView } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -11,14 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useStore } from "@/store/AppStore";
-import { CATEGORIES, JOBS, LEGIT_META, type Category, type LegitBadge, type WorkMode } from "@/data/jobs";
+import { CATEGORIES, JOBS, type Category, type WorkMode } from "@/data/jobs";
+import { byShown, contextFor, MIN_SCORE, splitMatches } from "@/lib/matchRules";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useLive } from "@/live/LiveProvider";
 import { startRefresh, useRefreshState } from "@/live/refreshStore";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { cn } from "@/lib/utils";
 
-type Sort = "match" | "newest" | "legit" | "salary" | "transferable";
+type Sort = "new" | "match" | "salary" | "transferable";
 
 interface Filters {
   q: string;
@@ -26,15 +26,13 @@ interface Filters {
   ccf: boolean;
   modes: WorkMode[];
   cats: Category[];
-  badges: LegitBadge[];
-  floor: boolean;
   posted: number;
 }
 
-const DEFAULTS: Filters = { q: "", sort: "match", ccf: false, modes: [], cats: [], badges: [], floor: false, posted: 0 };
+// New to you comes first. That is when a listing first reached this person, which is not always when it was posted.
+const DEFAULTS: Filters = { q: "", sort: "new", ccf: false, modes: [], cats: [], posted: 0 };
 
 function FilterPanel({ f, setF, onReset }: { f: Filters; setF: (fn: (f: Filters) => Filters) => void; onReset: () => void }) {
-  const { state } = useStore();
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   return (
     <div className="space-y-6">
@@ -46,17 +44,6 @@ function FilterPanel({ f, setF, onReset }: { f: Filters; setF: (fn: (f: Filters)
           <p className="mt-0.5 text-xs text-muted-foreground">Roles that do not require exact industry experience.</p>
         </div>
         <Switch id="ccf" checked={f.ccf} onCheckedChange={(v) => setF((x) => ({ ...x, ccf: v }))} />
-      </section>
-
-      <section>
-        <div className="mb-2 text-sm font-semibold">Legitimacy</div>
-        <div className="flex flex-wrap gap-2">
-          {(Object.keys(LEGIT_META) as LegitBadge[]).map((b) => (
-            <Chip key={b} active={f.badges.includes(b)} onClick={() => setF((x) => ({ ...x, badges: toggle(x.badges, b) }))}>
-              {LEGIT_META[b].label}
-            </Chip>
-          ))}
-        </div>
       </section>
 
       <section>
@@ -85,27 +72,16 @@ function FilterPanel({ f, setF, onReset }: { f: Filters; setF: (fn: (f: Filters)
         <div className="mb-2 text-sm font-semibold">Posted within</div>
         <div className="flex flex-wrap gap-2">
           {[
-            [0, "Any time"],
+            [0, "Last 30 days"],
             [3, "3 days"],
             [7, "A week"],
             [14, "2 weeks"],
-            [30, "30 days"],
           ].map(([d, l]) => (
             <Chip key={d} active={f.posted === d} onClick={() => setF((x) => ({ ...x, posted: d as number }))}>
               {l}
             </Chip>
           ))}
         </div>
-      </section>
-
-      <section className="flex items-start justify-between gap-3">
-        <div>
-          <Label htmlFor="floor" className="text-sm font-semibold">
-            At or above my salary floor
-          </Label>
-          <p className="mt-0.5 text-xs text-muted-foreground">Your floor is ${state.prefs.salaryFloor.toLocaleString()}. Hides listings with no range.</p>
-        </div>
-        <Switch id="floor" checked={f.floor} onCheckedChange={(v) => setF((x) => ({ ...x, floor: v }))} />
       </section>
 
       <Button variant="ghost" size="sm" onClick={onReset} className="w-full">
@@ -123,7 +99,7 @@ export default function Matches() {
   const rs = useRefreshState();
   const [f, setFState] = useSessionState<Filters>("feed", DEFAULTS);
   const setF = (fn: (f: Filters) => Filters) => setFState((prev) => fn(prev));
-  const [showHidden, setShowHidden] = useState(false);
+  const [showWeaker, setShowWeaker] = useState(false);
   const [limit, setLimit] = useState(12);
   const [sheet, setSheet] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -133,36 +109,39 @@ export default function Matches() {
     return () => clearTimeout(t);
   }, []);
 
-  const { list, hiddenByShield, dismissed } = useMemo(() => {
+  const { list, weakerCount, dismissed } = useMemo(() => {
     const q = f.q.trim().toLowerCase();
-    let arr = JOBS.filter((j) => !j.imported && !state.dismissedJobIds.includes(j.id));
-    const hidden = arr.filter((j) => j.legit.score < state.legitThreshold);
-    if (!showHidden) arr = arr.filter((j) => j.legit.score >= state.legitThreshold);
+    // Real accounts only see jobs that fit them. Legitimacy, freshness, distance, pay, dealbreakers and
+    // applications already sent are all handled here, without the person having to set anything.
+    const rules = live ? splitMatches(JOBS, contextFor(state)) : null;
+    const applied = new Set(state.applications.filter((a) => a.receipt?.submittedAt || a.column !== "saved").map((a) => a.jobId));
+    let arr = rules
+      ? showWeaker
+        ? [...rules.shown, ...rules.weaker]
+        : rules.shown
+      : JOBS.filter((j) => !j.imported && !state.dismissedJobIds.includes(j.id) && !applied.has(j.id) && j.legit.score >= state.legitThreshold);
     if (q) arr = arr.filter((j) => `${j.title} ${j.company.name} ${j.location} ${j.category}`.toLowerCase().includes(q));
     if (f.ccf) arr = arr.filter((j) => j.careerChangerFriendly);
     if (f.modes.length) arr = arr.filter((j) => f.modes.includes(j.mode));
     if (f.cats.length) arr = arr.filter((j) => f.cats.includes(j.category));
-    if (f.badges.length) arr = arr.filter((j) => f.badges.includes(j.legit.badge));
     if (f.posted) arr = arr.filter((j) => j.postedDaysAgo <= f.posted);
-    if (f.floor) arr = arr.filter((j) => j.salary && j.salary[1] >= state.prefs.salaryFloor);
     const sorters: Record<Sort, (a: (typeof arr)[0], b: (typeof arr)[0]) => number> = {
+      new: live ? byShown : (a, b) => a.postedDaysAgo - b.postedDaysAgo,
       match: (a, b) => b.match - a.match,
-      newest: (a, b) => a.postedDaysAgo - b.postedDaysAgo,
-      legit: (a, b) => b.legit.score - a.legit.score,
       salary: (a, b) => (b.salary?.[1] ?? 0) - (a.salary?.[1] ?? 0),
       transferable: (a, b) => b.breakdown.transferable - a.breakdown.transferable,
     };
-    arr = [...arr].sort(sorters[f.sort]);
-    return { list: arr, hiddenByShield: hidden, dismissed: state.dismissedJobIds.length };
-  }, [f, state.dismissedJobIds, state.legitThreshold, state.prefs.salaryFloor, showHidden]);
+    arr = [...arr].sort(sorters[f.sort] ?? sorters.new);
+    return { list: arr, weakerCount: rules?.weaker.length ?? 0, dismissed: state.dismissedJobIds.length };
+  }, [f, live, state.applications, state.dismissedJobIds, state.legitThreshold, state.prefs, state.profile.location, showWeaker, rs.running]);
 
-  const activeCount = (f.ccf ? 1 : 0) + f.modes.length + f.cats.length + f.badges.length + (f.floor ? 1 : 0) + (f.posted ? 1 : 0);
+  const activeCount = (f.ccf ? 1 : 0) + f.modes.length + f.cats.length + (f.posted ? 1 : 0);
 
   return (
     <div>
       <PageHeader
         title="Your matches"
-        sub={live ? "Real, current listings, ranked by how well your real experience fits, including what transfers from your past work. Every listing has a legitimacy score." : "Ranked by how well your experience fits, including what transfers from retail. Every listing has a legitimacy score."}
+        sub={live ? "Real, current jobs near you that fit your experience, including what transfers from your past work. The newest ones to reach you come first." : "Ranked by how well your experience fits, including what transfers from retail."}
         actions={
           live ? (
             <Button onClick={() => void startRefresh(flushProfile)} disabled={rs.running}>
@@ -220,10 +199,9 @@ export default function Matches() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="new">{live ? "Newest to you" : "Newest first"}</SelectItem>
                   <SelectItem value="match">Best match</SelectItem>
                   <SelectItem value="transferable">Best transferable fit</SelectItem>
-                  <SelectItem value="newest">Newest first</SelectItem>
-                  <SelectItem value="legit">Most legitimate</SelectItem>
                   <SelectItem value="salary">Highest salary</SelectItem>
                 </SelectContent>
               </Select>
@@ -240,15 +218,13 @@ export default function Matches() {
             <span className="text-muted-foreground">
               <span className="num font-semibold text-foreground">{list.length}</span> {list.length === 1 ? "match" : "matches"}
             </span>
-            {hiddenByShield.length > 0 && (
-              <span className="inline-flex flex-wrap items-center gap-2 text-muted-foreground">
+            {live && weakerCount > 0 && (
+              <span className="inline-flex items-center gap-2 text-muted-foreground">
                 <span aria-hidden>·</span>
-                <span>
-                  <span className="num">{hiddenByShield.length}</span> left out as likely not real
-                </span>
-                <button onClick={() => setShowHidden((s) => !s)} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
-                  {showHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {showHidden ? "Hide them again" : "Show them"}
-                </button>
+                <Label htmlFor="weaker" className="cursor-pointer font-normal">
+                  Show <span className="num">{weakerCount}</span> weaker {weakerCount === 1 ? "match" : "matches"} (under {MIN_SCORE})
+                </Label>
+                <Switch id="weaker" checked={showWeaker} onCheckedChange={setShowWeaker} />
               </span>
             )}
             {dismissed > 0 && (
@@ -257,19 +233,6 @@ export default function Matches() {
               </span>
             )}
           </div>
-
-          {showHidden && hiddenByShield.length > 0 && (
-            <div className="mb-4 rounded-xl border border-danger-border bg-danger-soft p-4 text-sm animate-fade-up">
-              <div className="font-semibold text-danger">You are seeing listings we would normally leave out.</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {hiddenByShield.map((j) => (
-                  <span key={j.id} className="inline-flex items-center gap-1.5 rounded-lg bg-background px-2 py-1">
-                    {j.company.name} <LegitBadgeView badge={j.legit.badge} score={j.legit.score} size="xs" withTip={false} />
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
 
           {loading ? (
             <div className="space-y-3" aria-busy="true" aria-label="Loading matches">
@@ -305,8 +268,8 @@ export default function Matches() {
             ) : (
               <EmptyState
                 icon={Search}
-                title="No matches with these filters"
-                body="Try removing a filter or lowering your Shield threshold. We never pad this list with junk to make it look full."
+                title={live ? "Nothing new that fits right now" : "No matches with these filters"}
+                body={live ? "Every listing we found was too far, too old, below your pay floor or a weaker fit. Press Find new jobs later, widen your range in Settings, or show weaker matches. We never pad this list to make it look full." : "Try removing a filter. We never pad this list with junk to make it look full."}
                 action={
                   <Button variant="outline" onClick={() => setFState(DEFAULTS)}>
                     Reset filters

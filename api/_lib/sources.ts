@@ -18,6 +18,19 @@ export interface RawJob {
   /** Where the listing sits, when the board tells us. Used for the commute radius. */
   latitude: number | null;
   longitude: number | null;
+  /** Two letter state, when the board says which one. The board's own coordinates are missing, so this is what lets us place a listing. */
+  state?: string | null;
+}
+
+const STATES: Record<string, string> = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO", connecticut: "CT", delaware: "DE", "district of columbia": "DC", florida: "FL", georgia: "GA", hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD", massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT", virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY",
+};
+
+/** "New York" or "NY" to "NY". Null when it is neither. */
+export function stateCode(s: string | undefined | null): string | null {
+  const t = (s ?? "").trim();
+  if (/^[A-Za-z]{2}$/.test(t)) return t.toUpperCase();
+  return STATES[t.toLowerCase()] ?? null;
 }
 
 async function getJson(url: string, init?: RequestInit, ms = 12_000): Promise<unknown> {
@@ -38,7 +51,7 @@ interface AdzunaResult {
   id: string;
   title: string;
   company?: { display_name?: string };
-  location?: { display_name?: string };
+  location?: { display_name?: string; area?: string[] };
   description?: string;
   redirect_url?: string;
   created?: string;
@@ -81,12 +94,17 @@ export async function adzunaSearch(
     const predicted = r.salary_is_predicted === "1";
     const hasSalary = !predicted && !!r.salary_min && !!r.salary_max && r.salary_min > 10000;
     const text = `${r.title} ${r.description} ${r.location?.display_name}`;
+    // Adzuna lists the place as [country, state, county, city]. The state is what tells Austin, TX from Austin, MN.
+    const area = r.location?.area ?? [];
+    const st = stateCode(area[1]);
+    const city = area.length >= 3 ? clean(area[area.length - 1]) : "";
     return {
       source: "adzuna",
       external_id: String(r.id),
       title: clean(r.title),
       company: clean(r.company?.display_name) || "Company not named",
-      location: clean(r.location?.display_name),
+      location: city && st ? `${city}, ${st}` : clean(r.location?.display_name),
+      state: st,
       description: clean(r.description),
       apply_url: r.redirect_url ?? "",
       posted_at: r.created ?? null,
@@ -138,6 +156,7 @@ export async function jsearchSearch(query: string): Promise<RawJob[]> {
       title: clean(r.job_title),
       company: clean(r.employer_name) || "Company not named",
       location: r.job_is_remote ? "Remote" : [r.job_city, r.job_state].filter(Boolean).join(", "),
+      state: stateCode(r.job_state),
       description: clean(r.job_description).slice(0, 12000),
       // Prefer a link straight to the employer when the listing offers one.
       apply_url: r.apply_options?.find((o) => o.is_direct)?.apply_link ?? r.job_apply_link ?? "",

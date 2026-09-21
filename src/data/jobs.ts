@@ -72,6 +72,8 @@ export interface Job {
   checkedAt?: string;
   /** Straight line miles from the person's home base. Null when either end has no coordinates. */
   distanceMiles?: number | null;
+  /** When this listing was first shown to the signed in person. Newest to them is shown first. */
+  shownAt?: string;
 }
 
 /* ------------------------------------------------------------------ */

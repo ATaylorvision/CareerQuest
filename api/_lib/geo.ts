@@ -66,6 +66,26 @@ async function byName(place: string): Promise<Point | null> {
   }
 }
 
+/**
+ * A city in a known state, to coordinates. This is what places a job listing,
+ * because the boards we use do not send coordinates. It is one small request
+ * per city, and the caller keeps the answer so no city is asked for twice.
+ */
+export async function geocodeCity(city: string, state: string): Promise<Point | null> {
+  try {
+    const data = (await getJson(`https://api.zippopotam.us/us/${encodeURIComponent(state.toLowerCase())}/${encodeURIComponent(city.trim())}`, undefined, 3_500)) as { places?: { latitude: string; longitude: string }[] };
+    const places = data.places ?? [];
+    if (!places.length) return null;
+    // A city has several ZIP codes. Their average is close enough to its middle for a commute radius.
+    const lat = places.reduce((s, p) => s + Number(p.latitude), 0) / places.length;
+    const lng = places.reduce((s, p) => s + Number(p.longitude), 0) / places.length;
+    const point = { lat, lng };
+    return Number.isFinite(lat) && Number.isFinite(lng) && inUS(point) ? point : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Coordinates for a US place written the way a person would write it. Null when we cannot tell. */
 export async function geocodeUS(place: string): Promise<Point | null> {
   const text = place.trim();

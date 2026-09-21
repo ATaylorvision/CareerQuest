@@ -2,7 +2,7 @@ import { admin, body, route, quota } from "../_lib/http.js";
 import { adzunaSearch, jsearchSearch, looksEvergreen, looksLikeAgency, remoteType, type RawJob } from "../_lib/sources.js";
 import { checkCompanySite, type SiteCheck } from "../_lib/ats.js";
 import { computeLegitimacy, type LegitSignals } from "../../src/lib/legit.js";
-import { geocodeUS, haversineMiles, type Point } from "../_lib/geo.js";
+import { geocodeCity, geocodeUS, haversineMiles, type Point } from "../_lib/geo.js";
 
 const MAX_JOBS = 30;
 const DAY = 86_400_000;
@@ -54,7 +54,7 @@ export default route(async (req, _res, user) => {
 
   const { data: profile } = await db
     .from("profiles")
-    .select("location, target_roles, locations, remote_pref, salary_floor, max_distance_miles, home_lat, home_lng, home_geocoded_for")
+    .select("location, target_roles, locations, remote_pref, salary_floor, max_distance_miles, home_lat, home_lng, home_geocoded_for, anchors")
     .eq("id", user.id)
     .single();
 
@@ -86,6 +86,32 @@ export default route(async (req, _res, user) => {
     if (homePoint) await db.from("profiles").update({ home_lat: homePoint.lat, home_lng: homePoint.lng, home_geocoded_for: home }).eq("id", user.id);
   }
 
+  // Every place the person said they would work, with coordinates. Distance is measured from
+  // whichever of these is nearest, so a person open to Manhattan and Long Island is not judged
+  // from one of them alone. Looked up once and kept on the profile.
+  type Anchor = { place: string; lat: number; lng: number };
+  const cachedAnchors: Anchor[] = Array.isArray(profile?.anchors) ? (profile!.anchors as Anchor[]) : [];
+  const anchors: Anchor[] = [];
+  for (const place of areas) {
+    let a = cachedAnchors.find((c) => c.place === place);
+    if (!a) {
+      const p = place === home && homePoint ? homePoint : await geocodeUS(place);
+      if (p) a = { place, lat: p.lat, lng: p.lng };
+    }
+    if (a) anchors.push(a);
+  }
+  if (JSON.stringify(anchors) !== JSON.stringify(cachedAnchors)) {
+    await db.from("profiles").update({ anchors }).eq("id", user.id);
+    // The places changed, so distances saved on earlier matches were measured from somewhere else.
+    const { data: mine } = await db.from("job_matches").select("job_id, distance_miles, jobs(latitude, longitude, remote_type)").eq("user_id", user.id).limit(400);
+    const fix = (mine ?? []).flatMap((m) => {
+      const j = (Array.isArray(m.jobs) ? m.jobs[0] : m.jobs) as { latitude: number | null; longitude: number | null; remote_type: string | null } | null;
+      const d = !j || j.remote_type === "remote" || j.latitude == null || j.longitude == null || !anchors.length ? null : Math.round(Math.min(...anchors.map((a) => haversineMiles(a, { lat: j.latitude!, lng: j.longitude! }))));
+      return d === m.distance_miles ? [] : [{ job_id: m.job_id as string, d }];
+    });
+    await pool(fix, 10, (x) => Promise.resolve(db.from("job_matches").update({ distance_miles: x.d }).eq("user_id", user.id).eq("job_id", x.job_id)).then(() => undefined));
+  }
+
   // 1. Pull real listings, each one scoped to a place the person named.
   const searchRemote = remoteOnly || listedRemote || (openToRemote && areas.length === 0);
   const queries: Promise<Found[]>[] = [];
@@ -100,9 +126,38 @@ export default route(async (req, _res, user) => {
   queries.push(tag(jsearchSearch(`${roles[0]} in ${areas[0] || "United States"}`), false));
   const raw = (await Promise.all(queries)).flat();
 
-  /** How far a listing sits from home, when both ends have coordinates. */
+  // The job boards send no coordinates, so place each listing from its city and state.
+  {
+    const need = new Map<string, { city: string; st: string }>();
+    for (const r of raw) {
+      if (r.latitude != null || !r.state || remoteType(r) === "remote") continue;
+      const city = r.location.split(",")[0]?.trim();
+      if (city) need.set(`${city}, ${r.state}`.toLowerCase(), { city, st: r.state });
+    }
+    const keys = [...need.keys()];
+    if (keys.length) {
+      const { data: hits } = await db.from("geo_cache").select("place, lat, lng, found").in("place", keys);
+      const geo = new Map<string, Point | null>((hits ?? []).map((g) => [g.place as string, g.found ? { lat: g.lat as number, lng: g.lng as number } : null]));
+      const missing = keys.filter((k) => !geo.has(k)).slice(0, 40);
+      await pool(missing, 8, async (k) => {
+        const { city, st } = need.get(k)!;
+        geo.set(k, await geocodeCity(city, st));
+      });
+      if (missing.length) await db.from("geo_cache").upsert(missing.map((k) => ({ place: k, lat: geo.get(k)?.lat ?? null, lng: geo.get(k)?.lng ?? null, found: !!geo.get(k) })), { onConflict: "place" });
+      for (const r of raw) {
+        if (r.latitude != null || !r.state) continue;
+        const p = geo.get(`${r.location.split(",")[0]?.trim()}, ${r.state}`.toLowerCase());
+        if (p) {
+          r.latitude = p.lat;
+          r.longitude = p.lng;
+        }
+      }
+    }
+  }
+
+  /** How far a listing sits from the nearest place the person named, when both ends have coordinates. */
   const milesFromHome = (r: Found): number | null =>
-    homePoint && r.latitude != null && r.longitude != null ? haversineMiles(homePoint, { lat: r.latitude, lng: r.longitude }) : null;
+    anchors.length && r.latitude != null && r.longitude != null ? Math.min(...anchors.map((a) => haversineMiles(a, { lat: r.latitude!, lng: r.longitude! }))) : null;
 
   /** Is this listing somewhere the person is actually willing to work? */
   function reachable(r: Found): boolean {

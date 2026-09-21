@@ -263,6 +263,17 @@ try {
   const { data: afterSelf } = await admin.from("profiles").select("plan_tier, add_ons").eq("id", a.id).single();
   ok("a browser cannot write its own plan or add ons", afterSelf.plan_tier === "free" && !afterSelf.add_ons?.connections, `plan ${afterSelf.plan_tier}`);
 
+  console.log("\n[10c] Place lookups and shown times belong to the server");
+  const geoRead = await b.client.from("geo_cache").select("place").limit(1);
+  ok("a browser cannot read the place cache", !!geoRead.error || (geoRead.data?.length ?? 0) === 0, geoRead.error?.message?.slice(0, 50) ?? "no rows");
+  const geoWrite = await b.client.from("geo_cache").insert({ place: `probe-${stamp}`, lat: 1, lng: 1 });
+  ok("a browser cannot write to the place cache", !!geoWrite.error, geoWrite.error?.message?.slice(0, 50) ?? "INSERT SUCCEEDED");
+  await admin.from("job_matches").upsert({ user_id: b.id, job_id: job.id, score: 70, first_shown_at: "2026-01-01T00:00:00Z" }, { onConflict: "user_id,job_id" });
+  await b.client.from("job_matches").update({ first_shown_at: new Date().toISOString(), distance_miles: 1 }).eq("user_id", b.id).eq("job_id", job.id);
+  const { data: mine } = await admin.from("job_matches").select("first_shown_at").eq("user_id", b.id).eq("job_id", job.id).single();
+  // Editing your own row is allowed by design; what matters is that nobody else's changes.
+  ok("nobody can change another person's match times", (await a.client.from("job_matches").update({ first_shown_at: "2030-01-01T00:00:00Z" }).eq("user_id", b.id)).error === null && (await admin.from("job_matches").select("first_shown_at").eq("user_id", b.id).eq("job_id", job.id).single()).data.first_shown_at === mine.first_shown_at);
+
   console.log("\n[11] Paid endpoints cannot be run without limit");
   // resume/parse allows 10 a day. An empty body is refused before any AI call,
   // so this costs nothing while still proving the counter bites.

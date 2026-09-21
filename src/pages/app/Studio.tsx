@@ -283,7 +283,18 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
   const describe = (f: ResumeFormat) =>
     [f.size ? `${f.size} pt type` : null, f.lineHeight ? `${f.lineHeight} line spacing` : null, f.margin !== null ? `${f.margin} in margins` : null].filter(Boolean).join(", ");
 
+  /** True while the cursor is inside a line of the resume. Nothing is applied to the page then unless the person asks from outside it. */
+  const editingNow = () => {
+    const a = document.activeElement as HTMLElement | null;
+    if (a?.getAttribute("role") === "textbox" && a.hasAttribute("data-field")) {
+      toast("You are editing a line", { description: "Finish that line first, then apply this." });
+      return true;
+    }
+    return false;
+  };
+
   const autoFit = async () => {
+    if (editingNow()) return;
     setAutoBusy(true);
     setFitNote(null);
     setCuts([]);
@@ -293,7 +304,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
       setPageFit(out.fit);
       if (out.fits) {
         setFitNote(`Set to ${describe(out.format) || "the layout defaults"}${out.allowedPages === 2 ? ". With this much experience, two pages is normal." : "."}`);
-        toast.success(out.allowedPages === 2 ? "Fits on two pages" : "Fits on one page");
+        toast.success("Page adjusted");
       } else {
         setCuts(suggestCuts(built, out.fit.linesOver));
         setFitNote(`Even at ${out.format.size ?? tpl.base} pt with the tightest spacing it runs about ${out.fit.linesOver} lines over, and we will not go below 9.5 pt. You could cut a few lines below, or try the Compact layout.`);
@@ -304,12 +315,17 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
   };
 
   const cutLine = (id: string) => {
+    if (editingNow()) return;
     editField(id, "");
     setCuts((c) => c.filter((x) => x.id !== id));
     toast("Line removed", { description: "You can bring it back with Undo my edits." });
   };
 
-  const useSuggestion = (id: string) => (id.startsWith("tailor:") ? decide(id.slice(7), "accepted") : store.use(id));
+  const useSuggestion = (id: string) => {
+    if (editingNow()) return;
+    if (id.startsWith("tailor:")) decide(id.slice(7), "accepted");
+    else store.use(id);
+  };
   const skipSuggestion = (id: string) => (id.startsWith("tailor:") ? decide(id.slice(7), "rejected") : store.skip(id));
 
   /** Asks Wren for a rewrite of one line, from the page. Resolves to false if there was nothing worth changing. */
@@ -348,6 +364,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
     });
 
   const acceptAll = () =>
+    !editingNow() &&
     update((s) => {
       changes.forEach((c) => {
         if (!s.resume.decisions[c.id]) s.resume.decisions[c.id] = "accepted";

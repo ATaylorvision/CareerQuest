@@ -15,6 +15,8 @@ export interface LineSuggestion {
 }
 
 interface Hover {
+  /** True while any line is being typed on. Nothing is offered or shown then. */
+  editing?: boolean;
   suggestions?: Record<string, LineSuggestion>;
   onUse?: (id: string) => void;
   onSkip?: (id: string) => void;
@@ -98,7 +100,7 @@ function Suggestable({ field, hover, children }: { field: string; hover: Hover; 
       onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
     >
       {children}
-      {s && (
+      {s && !hover.editing && (
         <button
           type="button"
           aria-label="See Wren's suggestion for this line"
@@ -109,12 +111,12 @@ function Suggestable({ field, hover, children }: { field: string; hover: Hover; 
           <Sparkles className="h-3 w-3" aria-hidden />
         </button>
       )}
-      {open && !typing && s && (
+      {open && !typing && !hover.editing && s && (
         <div className="absolute left-0 right-0 top-full z-30 pt-1.5" onMouseEnter={show} onMouseLeave={hide}>
           <SuggestionCard s={s} field={field} onUse={() => hover.onUse?.(s.id)} onSkip={() => hover.onSkip?.(s.id)} />
         </div>
       )}
-      {open && !typing && !s && hover.onImprove && (
+      {open && !typing && !hover.editing && !s && hover.onImprove && (
         <button
           type="button"
           onClick={() => void improve()}
@@ -147,7 +149,7 @@ export function ResumeDocument({
   onEdit,
   onContactEdit,
   onLive,
-  hover = {},
+  hover: hoverIn = {},
 }: {
   r: BuiltResume;
   /** Suggestions that appear when a line is pointed at. Leave out for a plain editable page. */
@@ -158,6 +160,11 @@ export function ResumeDocument({
   /** `text` is null once the line is committed and the draft should be dropped. */
   onLive?: (fieldId: string, text: string | null) => void;
 }) {
+  // Whether any line is being typed on. While it is, nothing is offered or changed.
+  const [editing, setEditing] = useState(false);
+  const isText = (e: React.SyntheticEvent) => (e.target as HTMLElement).getAttribute?.("role") === "textbox";
+  const hover: Hover = { ...hoverIn, editing };
+
   // Your own words win over a suggestion, so a line you retyped is marked as
   // yours and nothing else. Tinting it as tailored too would be a lie.
   const marks = (id: string) =>
@@ -172,7 +179,11 @@ export function ResumeDocument({
   );
 
   return (
-    <div className="mx-auto max-w-[720px] rounded-lg border bg-white p-6 font-serif text-[13px] leading-relaxed text-neutral-900 shadow-card sm:p-10">
+    <div
+      onFocusCapture={(e) => isText(e) && setEditing(true)}
+      onBlurCapture={(e) => isText(e) && setEditing(false)}
+      className="mx-auto max-w-[720px] rounded-lg border bg-white p-6 font-serif text-[13px] leading-relaxed text-neutral-900 shadow-card sm:p-10"
+    >
       <EditableText
         as="h2"
         fieldId="contact.name"

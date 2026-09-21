@@ -1,5 +1,6 @@
 import type { AppState } from "@/store/AppStore";
 import { JOBS, type Job } from "@/data/jobs";
+import { visibleFor } from "@/lib/matchRules";
 import { INTENSITY_META, type PlanItem } from "@/data/plan";
 import { diffDays } from "@/lib/date";
 import { TARGET_FIELDS } from "@/data/translator";
@@ -15,7 +16,7 @@ export const localDay = () => new Date().toLocaleDateString("en-CA");
 export function buildLivePlan(state: AppState): PlanItem[] {
   const day = localDay();
   const id = (k: string) => `${day}:${k}`;
-  const visible = JOBS.filter((j) => !j.imported && j.legit.score >= state.legitThreshold && !state.dismissedJobIds.includes(j.id));
+  const visible = visibleFor(state);
   const appliedIds = new Set(state.applications.filter((a) => a.receipt?.submittedAt).map((a) => a.jobId));
   const savedIds = new Set(state.applications.map((a) => a.jobId));
   const ranked = [...visible].sort((a, b) => b.match - a.match);
