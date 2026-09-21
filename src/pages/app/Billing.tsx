@@ -37,7 +37,7 @@ export default function Billing() {
 
   const startTrial = (cycle: "monthly" | "yearly") => {
     // Real accounts pay on Stripe. What follows is the demo only.
-    if (live && user) return openCheckout("pro", user);
+    if (live && user) return openCheckout("pro", user, cycle);
     update((s) => {
       s.billing = { ...s.billing, tier: "trial", cycle, trialStartedAt: new Date().toISOString(), trialEndsAt: daysFromNow(7), renewsAt: daysFromNow(7), cancelledAt: null };
     });

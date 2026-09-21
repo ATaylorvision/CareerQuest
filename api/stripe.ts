@@ -15,7 +15,8 @@ import { admin, HttpError, requireUser } from "./_lib/http.js";
 export const config = { api: { bodyParser: false } };
 
 /** The end of each payment link's address. Stripe reports which link was used, and this says what it was for. */
-const PRO_LINK = "aFadR25lt16O0Fq1eF38401";
+/** Pro has three: the first, without a trial, is kept so anyone who bought through it is still recognised. */
+const PRO_LINKS = ["aFadR25lt16O0Fq1eF38401", "7sYcMY0198zg9bW1eF38402", "8x23cocNV16OgEo2iJ38403"];
 const CONNECTIONS_LINK = "5kQ28kdRZ4j0dscaPf38400";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -74,6 +75,7 @@ function periodFields(sub: Sub) {
   const item = sub.items?.data?.[0];
   return {
     subscription_status: sub.status,
+    trial_ends_at: sub.status === "trialing" ? iso(sub.trial_end) : null,
     current_period_end: iso(sub.current_period_end ?? item?.current_period_end),
     cancel_at_period_end: !!sub.cancel_at_period_end,
     billing_cycle: item?.price?.recurring?.interval === "year" ? "yearly" : "monthly",
@@ -98,7 +100,7 @@ async function whichProduct(paymentLinkId: string | null | undefined): Promise<"
     url = ((await stripe<{ url?: string }>(`payment_links/${encodeURIComponent(paymentLinkId)}`)).url ?? "").toString();
     linkCache.set(paymentLinkId, url);
   }
-  if (url.endsWith(PRO_LINK)) return "pro";
+  if (PRO_LINKS.some((c) => url.endsWith(c))) return "pro";
   if (url.endsWith(CONNECTIONS_LINK)) return "connections";
   return null;
 }
@@ -128,7 +130,7 @@ async function onCheckoutCompleted(s: Session) {
   if (product === "pro") {
     const { error } = await db
       .from("profiles")
-      .update({ plan_tier: "pro", stripe_customer_id: s.customer ?? null, stripe_subscription_id: s.subscription ?? null, ...(sub ? periodFields(sub) : {}), updated_at: now })
+      .update({ plan_tier: sub?.status === "trialing" ? "trial" : "pro", stripe_customer_id: s.customer ?? null, stripe_subscription_id: s.subscription ?? null, ...(sub ? periodFields(sub) : {}), updated_at: now })
       .eq("id", uid);
     if (error) throw new HttpError(500, "Could not record the payment.");
   } else {
@@ -146,7 +148,7 @@ async function onSubscriptionChanged(sub: Sub) {
   if (proOwner) {
     await db
       .from("profiles")
-      .update({ ...periodFields(sub), ...(ended ? { plan_tier: "free", cancel_at_period_end: false } : { plan_tier: "pro" }), updated_at: new Date().toISOString() })
+      .update({ ...periodFields(sub), ...(ended ? { plan_tier: "free", cancel_at_period_end: false } : { plan_tier: sub.status === "trialing" ? "trial" : "pro" }), updated_at: new Date().toISOString() })
       .eq("id", proOwner.id);
     return;
   }
