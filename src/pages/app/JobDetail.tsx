@@ -29,6 +29,7 @@ import { Card, CompanyLogo, PageHeader, PersonAvatar, ScoreBar, ScoreRing, Secti
 import { LegitBadgeView, MethodBadge, Pill, TONE_CLASS } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { ApplyFlow } from "@/components/ApplyFlow";
+import { companySiteUrl } from "@/lib/companySite";
 import { useSaveJob } from "@/components/JobCard";
 import { TranslatorForBullets, topBulletsFor } from "@/components/TranslatorRows";
 import { jobById, LEGIT_META, MATCH_WEIGHTS, salaryMarket, salaryText, type Job } from "@/data/jobs";
@@ -42,7 +43,7 @@ import { api } from "@/live/api";
 import { patchJob } from "@/data/jobs";
 import { LiveAboutCard, LiveCompanyCard, LiveGapsCard, LiveTranslatorCard, useEnrich } from "./JobDetailLive";
 
-// Results of "Verify on company site" survive the page refresh that follows an update.
+// Results of "Check this listing again" survive the page refresh that follows an update.
 const verifyResults = new Map<string, { tone: "success" | "danger" | "warning" | "info"; text: string }>();
 import { cn } from "@/lib/utils";
 
@@ -166,9 +167,14 @@ function WhyThisScore({ job }: { job: Job }) {
         ))}
       </ul>
       <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">Scores start at 100. Each risk signal subtracts points. The badge follows fixed rules, not a black box.</div>
-      <Button variant="outline" className="mt-4 w-full" onClick={() => void runVerify()} disabled={check === "checking"}>
-        {check === "checking" ? <Loader2 className="animate-spin" /> : <ExternalLink />}
-        {check === "checking" ? `Checking ${job.company.name}` : "Verify on company site"}
+      <Button asChild variant="outline" className="mt-4 w-full">
+        <a href={companySiteUrl(job)} target="_blank" rel="noopener noreferrer">
+          <ExternalLink /> View company site
+        </a>
+      </Button>
+      <Button variant="ghost" size="sm" className="mt-1 w-full text-muted-foreground" onClick={() => void runVerify()} disabled={check === "checking"}>
+        {check === "checking" ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
+        {check === "checking" ? `Checking ${job.company.name}` : "Check this listing again"}
       </Button>
       {check === "done" && (
         <div className={cn("mt-3 rounded-lg border p-3 text-sm animate-fade-up", TONE_CLASS[(job.live ? liveResult : result)?.tone ?? "info"])} role="status">

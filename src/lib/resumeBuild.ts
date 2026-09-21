@@ -21,39 +21,8 @@ export interface ManualEdits {
 
 const ROLE_FIELDS = ["title", "company", "location", "start", "end"] as const;
 
-/**
- * Apply only the accepted changes to the base resume, then whatever the person
- * typed over the top. Nothing else can enter the document.
- */
-export function buildResume(changes: TailorChange[], decisions: Record<string, string>, manual: ManualEdits = {}): BuiltResume {
-  const r = structuredClone(BASE_RESUME) as Resume;
-  const changedIds = new Set<string>();
-  const editedIds = new Set<string>();
-  let certsOwnSection = false;
-  for (const c of changes) {
-    if (decisions[c.id] !== "accepted") continue;
-    if (c.sourceId === "summary") {
-      r.summary = c.tailored;
-      changedIds.add("summary");
-    } else if (c.sourceId === "skills") {
-      r.skills = c.tailored.split(/,\s*(?![^()]*\))/);
-      changedIds.add("skills");
-    } else if (c.sourceId === "certs") {
-      certsOwnSection = true;
-      changedIds.add("certs");
-    } else {
-      for (const role of r.roles) {
-        const idx = role.bullets.findIndex((b) => b.id === c.sourceId);
-        if (idx === -1) continue;
-        role.bullets[idx] = { ...role.bullets[idx], text: c.tailored };
-        if (c.type === "reorder" && idx > 0) {
-          const [b] = role.bullets.splice(idx, 1);
-          role.bullets.unshift(b);
-        }
-        changedIds.add(c.sourceId);
-      }
-    }
-  }
+/** What the person typed over the top of a resume. Shared by the Studio and by anywhere a saved version is edited. */
+function applyManual(r: Resume, manual: ManualEdits, editedIds: Set<string>) {
   const fields = manual.fields ?? {};
   const put = (id: string, apply: (v: string) => void) => {
     const v = fields[id];
@@ -93,6 +62,50 @@ export function buildResume(changes: TailorChange[], decisions: Record<string, s
       editedIds.add(`contact.${k}`);
     }
   }
+}
+
+/** A saved resume with a person's edits laid over it, without touching the original. */
+export function withManualEdits(base: BuiltResume, manual: ManualEdits): BuiltResume {
+  const r = structuredClone({ ...base, changedIds: undefined, editedIds: undefined }) as unknown as Resume;
+  const editedIds = new Set<string>(base.editedIds);
+  applyManual(r, manual, editedIds);
+  return { ...r, certsOwnSection: base.certsOwnSection, changedIds: new Set(base.changedIds), editedIds };
+}
+
+/**
+ * Apply only the accepted changes to the base resume, then whatever the person
+ * typed over the top. Nothing else can enter the document.
+ */
+export function buildResume(changes: TailorChange[], decisions: Record<string, string>, manual: ManualEdits = {}): BuiltResume {
+  const r = structuredClone(BASE_RESUME) as Resume;
+  const changedIds = new Set<string>();
+  const editedIds = new Set<string>();
+  let certsOwnSection = false;
+  for (const c of changes) {
+    if (decisions[c.id] !== "accepted") continue;
+    if (c.sourceId === "summary") {
+      r.summary = c.tailored;
+      changedIds.add("summary");
+    } else if (c.sourceId === "skills") {
+      r.skills = c.tailored.split(/,\s*(?![^()]*\))/);
+      changedIds.add("skills");
+    } else if (c.sourceId === "certs") {
+      certsOwnSection = true;
+      changedIds.add("certs");
+    } else {
+      for (const role of r.roles) {
+        const idx = role.bullets.findIndex((b) => b.id === c.sourceId);
+        if (idx === -1) continue;
+        role.bullets[idx] = { ...role.bullets[idx], text: c.tailored };
+        if (c.type === "reorder" && idx > 0) {
+          const [b] = role.bullets.splice(idx, 1);
+          role.bullets.unshift(b);
+        }
+        changedIds.add(c.sourceId);
+      }
+    }
+  }
+  applyManual(r, manual, editedIds);
 
   return { ...r, certsOwnSection, changedIds, editedIds };
 }

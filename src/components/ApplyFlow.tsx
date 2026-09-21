@@ -15,11 +15,18 @@ import { saveApplication } from "@/live/persist";
 import type { Job } from "@/data/jobs";
 import { isPro } from "@/lib/selectors";
 import { fireConfetti } from "@/lib/confetti";
+import { LiveApply } from "@/components/LiveApply";
 import { cn } from "@/lib/utils";
 
 type Stage = "review" | "prefill" | "working" | "done" | "manual-done";
 
-export function ApplyFlow({ job, open, onOpenChange }: { job: Job; open: boolean; onOpenChange: (o: boolean) => void }) {
+/** Real accounts get the materials flow. The sample account keeps the simulated one. */
+export function ApplyFlow(props: { job: Job; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { state } = useStore();
+  return state.mode === "live" ? <LiveApply {...props} /> : <DemoApplyFlow {...props} />;
+}
+
+function DemoApplyFlow({ job, open, onOpenChange }: { job: Job; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { state, update } = useStore();
   const pro = isPro(state);
   const versions = state.resume.versions;

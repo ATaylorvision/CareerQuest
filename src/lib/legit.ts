@@ -62,7 +62,7 @@ export function computeLegitimacy(s: LegitSignals): LegitResult {
     value: s.companySite === "confirmed" ? `Yes, checked ${s.checkedHoursAgo ?? 6}h ago` : s.companySite === "unconfirmed" ? "Not confirmed yet" : "No matching role found",
     impact: site,
     tone: s.companySite === "confirmed" ? "good" : s.companySite === "unconfirmed" ? "warn" : "bad",
-    note: s.companySite === "confirmed" ? "We found the same role on the employer's site. This is the best proof a job is real." : s.companySite === "unconfirmed" ? "We only see this on job boards so far. Use Verify on company site to check yourself." : "The employer's careers page has no role like this one.",
+    note: s.companySite === "confirmed" ? "We found the same role on the employer's site. This is the best proof a job is real." : s.companySite === "unconfirmed" ? "We only see this on job boards so far. Use View company site to check yourself." : "The employer's careers page has no role like this one.",
   });
 
   const agency = s.poster === "agency" ? -8 : 0;

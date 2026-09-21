@@ -66,7 +66,12 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
   const pro = isPro(state);
   const live = state.mode === "live";
 
-  const [doc, setDoc] = useSessionState<Doc>("studio-doc", "resume");
+  const [doc, setDoc] = useSessionState<Doc>("studio-doc", params.get("doc") === "letter" ? "letter" : "resume");
+  // A link from the apply screen can ask for the letter directly.
+  useEffect(() => {
+    if (params.get("doc") === "letter") setDoc("letter");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [liveChanges, setLiveChanges] = useSessionState<Record<string, TailorChange[]>>("live-changes", {});
   const demoChanges = useMemo(() => (live ? [] : changesForJob(job)), [live, job]);
   const changes = live ? (liveChanges[job.id] ?? []) : demoChanges;

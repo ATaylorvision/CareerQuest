@@ -335,7 +335,7 @@ export default function Landing() {
               eyebrow="3. Real listings only"
               title="Know which jobs are real before you spend an evening on them."
               body={`Before a listing reaches you we look for it on the employer's own careers page and check how long it has been circulating. In our sample feed, ${ghostCount} of ${JOBS.length} listings do not survive that check and are left out.`}
-              points={["Verified Live means we found it on the company's own careers page in the last 24 hours", "Every listing carries a plain label, and the signals behind it are on the page", "A Verify on company site button on every listing"]}
+              points={["Verified Live means we found it on the company's own careers page in the last 24 hours", "Every listing carries a plain label, and the signals behind it are on the page", "A View company site button on every listing"]}
               visual={<ShieldVisual />}
             />
             <Feature
