@@ -17,6 +17,11 @@ export const MAX_AGE_DAYS = 30;
 /** The commute slider tops out here, meaning distance is not a limit. */
 const ANY_DISTANCE = 100;
 
+/** If fewer than this many listings pass, the best of the weaker ones are shown too, so a person is not left with an empty page. */
+export const MIN_SHOWN = 6;
+/** The lowest score that may be brought in that way. Below this a listing is not a match at all. */
+export const RELAXED_SCORE = 45;
+
 export type Exclusion = "applied" | "dismissed" | "not-real" | "old" | "far" | "remote" | "pay" | "dealbreaker" | "required" | "weak";
 
 interface Context {
@@ -74,6 +79,8 @@ function namesPlace(location: string, places: string[]): boolean {
 export function whyExcluded(job: Job, c: Context): Exclusion | null {
   if (c.applied.has(job.id)) return "applied";
   if (c.dismissed.has(job.id)) return "dismissed";
+  // Once a match has been shown to someone it is theirs. Rules can keep new ones out, but they never take one away.
+  if (job.kept) return null;
   if (job.legit.score < c.legitThreshold || job.legit.badge === "ghost") return "not-real";
   if (job.postedDaysAgo > MAX_AGE_DAYS) return "old";
 
@@ -126,6 +133,13 @@ export function splitMatches(jobs: Job[], c: Context): Split {
     if (why === null) out.shown.push(j);
     else if (why === "weak") out.weaker.push(j);
     else out.left[why] = (out.left[why] ?? 0) + 1;
+  }
+  // A short list is better than an empty one, as long as what fills it is still a fair fit.
+  if (out.shown.length < MIN_SHOWN) {
+    const fill = out.weaker.filter((j) => j.match >= RELAXED_SCORE).sort((a, b) => b.match - a.match).slice(0, MIN_SHOWN - out.shown.length);
+    const taken = new Set(fill.map((j) => j.id));
+    out.shown.push(...fill);
+    out.weaker = out.weaker.filter((j) => !taken.has(j.id));
   }
   return out;
 }

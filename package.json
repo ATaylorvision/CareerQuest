@@ -19,7 +19,8 @@
     "test:stripe": "tsx scripts/test-stripe.ts",
     "test:agent": "tsx scripts/test-agent.ts",
     "test:fit": "tsx scripts/test-fit.ts",
-    "test:matches": "tsx scripts/test-matches.ts"
+    "test:matches": "tsx scripts/test-matches.ts",
+    "test:links": "tsx scripts/test-links.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

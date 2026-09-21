@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Building2, CheckCircle2, CircleDashed, ExternalLink, Languages, Map as MapIcon, XCircle } from "lucide-react";
+import { toast } from "sonner";
+import { AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronUp, CircleDashed, ExternalLink, HandHeart, Languages, Map as MapIcon, Undo2, XCircle } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useStore } from "@/store/AppStore";
+import { BASE_RESUME } from "@/data/user";
 import { Card, SectionTitle } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -70,42 +75,173 @@ export function LiveTranslatorCard({ job, loading, failed }: { job: Job; loading
   );
 }
 
-export function LiveAboutCard({ job, loading }: { job: Job; loading: boolean }) {
+/** The opening of a posting: enough to know what the job is, cut at the end of a sentence. */
+export function shortDescription(text: string, max = 420): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  return end > max * 0.5 ? cut.slice(0, end + 1) : `${cut.slice(0, cut.lastIndexOf(" "))}...`;
+}
+
+export function LiveAboutCard({ job }: { job: Job }) {
+  const [full, setFull] = useState(false);
   const text = job.descriptionText ?? "";
   const paras = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const short = shortDescription(text);
+  const hasMore = text.replace(/\s+/g, " ").trim().length > short.length;
   const truncated = text.length < 900 && !/careers page/i.test(job.source);
   return (
     <Card>
-      <SectionTitle>About the role</SectionTitle>
-      <div className="space-y-3 text-[15px] leading-relaxed text-foreground/85">
-        {paras.length === 0 ? <p className="text-muted-foreground">The source did not share a description. Open the posting to read it.</p> : paras.slice(0, 40).map((p, i) => <p key={i} className="whitespace-pre-line">{p}</p>)}
-      </div>
-      {truncated && job.applyUrl && (
-        <div className="mt-4 flex flex-col gap-2 rounded-lg bg-muted/50 p-3 text-sm sm:flex-row sm:items-center">
-          <span className="flex-1 text-muted-foreground">This is the excerpt the job board shared. The full posting is on the employer's page.</span>
-          <Button size="sm" variant="outline" asChild>
+      <SectionTitle icon={undefined}>About the role</SectionTitle>
+      {!text.trim() ? (
+        <p className="text-[15px] text-muted-foreground">The source did not share a description. Open the posting to read it.</p>
+      ) : full ? (
+        <div className="space-y-3 text-[15px] leading-relaxed text-foreground/85">
+          {paras.slice(0, 40).map((p, i) => (
+            <p key={i} className="whitespace-pre-line">
+              {p}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[15px] leading-relaxed text-foreground/85">{short}</p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {hasMore && (
+          <Button size="sm" variant="outline" onClick={() => setFull((v) => !v)} aria-expanded={full}>
+            {full ? <ChevronUp /> : <ChevronDown />} {full ? "Show less" : "View full post"}
+          </Button>
+        )}
+        {job.applyUrl && (
+          <Button size="sm" variant="ghost" asChild>
             <a href={job.applyUrl} target="_blank" rel="noopener noreferrer">
-              Read the full posting <ExternalLink />
+              {truncated ? "Read the full posting on the employer's page" : "Open the original posting"} <ExternalLink />
             </a>
           </Button>
-        </div>
-      )}
-      <h3 className="mb-2 mt-6 font-semibold">What they ask for, checked against your resume</h3>
+        )}
+      </div>
+      {full && truncated && <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">This is the excerpt the job board shared. The full posting is on the employer's page.</p>}
+    </Card>
+  );
+}
+
+/**
+ * What the posting asks for, checked against the resume. Where the resume is silent the person may
+ * well have it, so each of those can be answered: "I have this", in their own words. It counts as met
+ * for them, and can go straight onto the resume as a line they can then edit.
+ */
+export function LiveRequirementsCard({ job, loading }: { job: Job; loading: boolean }) {
+  const { state, update } = useStore();
+  const claims = state.resume.claims?.[job.id] ?? {};
+  const [open, setOpen] = useState<string | null>(null);
+  const [detail, setDetail] = useState("");
+  const [where, setWhere] = useState("remember");
+  const reqs = job.reqChecks ?? [];
+
+  const startAsk = (text: string) => {
+    setOpen(text);
+    setDetail("");
+    setWhere("remember");
+  };
+
+  const save = (text: string) => {
+    const said = detail.trim();
+    if (said.split(/\s+/).length < 3) return toast("Say a little more", { description: "A few words about what you did is enough, like where and for how long." });
+    update((s) => {
+      if (!s.resume.claims) s.resume.claims = {};
+      if (!s.resume.claims[job.id]) s.resume.claims[job.id] = {};
+      s.resume.claims[job.id][text] = { detail: said, at: new Date().toISOString() };
+      if (where !== "remember") {
+        if (!s.resume.added) s.resume.added = {};
+        if (!s.resume.added[job.id]) s.resume.added[job.id] = {};
+        (s.resume.added[job.id][where] ??= []).push({ id: `add-${Date.now().toString(36)}`, text: said });
+      }
+    });
+    setOpen(null);
+    toast.success("Counted as met", { description: where === "remember" ? "We will remember it for this job." : "It is on your resume for this job, in your own words. Edit it in the Studio." });
+  };
+
+  const undo = (text: string) =>
+    update((s) => {
+      if (s.resume.claims?.[job.id]) delete s.resume.claims[job.id][text];
+    });
+
+  const met = reqs.filter((r) => r.status === "met" || claims[r.text]).length;
+
+  return (
+    <Card>
+      <SectionTitle sub={reqs.length ? `${met} of ${reqs.length} covered. If we got one wrong, tell us and it counts.` : undefined}>What they ask for, checked against your resume</SectionTitle>
       {loading ? (
         <Skeleton lines={4} />
-      ) : (job.reqChecks ?? []).length === 0 ? (
+      ) : reqs.length === 0 ? (
         <p className="text-sm text-muted-foreground">We could not pick out clear requirements from this posting.</p>
       ) : (
-        <ul className="space-y-2 text-sm">
-          {(job.reqChecks ?? []).map((r) => (
-            <li key={r.text} className="flex gap-2.5">
-              {r.status === "met" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-label="You meet this" /> : r.status === "partial" ? <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-label="Partial match" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-label="Gap" />}
-              <span>
-                {r.text}
-                {r.note && <span className={cn("ml-2 text-xs", r.status === "gap" ? "text-danger" : r.status === "partial" ? "text-warning" : "text-muted-foreground")}>{r.note}</span>}
-              </span>
-            </li>
-          ))}
+        <ul className="space-y-3 text-sm">
+          {reqs.map((r) => {
+            const claim = claims[r.text];
+            const status = claim ? "met" : r.status;
+            return (
+              <li key={r.text}>
+                <div className="flex gap-2.5">
+                  {status === "met" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-label="You meet this" /> : status === "partial" ? <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-label="Partial match" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-label="Gap" />}
+                  <div className="min-w-0 flex-1">
+                    <span>{r.text}</span>
+                    {claim ? (
+                      <div className="mt-1 rounded-lg bg-success-soft/60 p-2.5 text-xs">
+                        <span className="font-semibold">You told us: </span>
+                        {claim.detail}
+                        <button type="button" onClick={() => undo(r.text)} className="ml-2 inline-flex items-center gap-1 font-medium text-primary hover:underline">
+                          <Undo2 className="h-3 w-3" aria-hidden /> Undo
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {r.note && <span className={cn("ml-2 text-xs", r.status === "gap" ? "text-danger" : r.status === "partial" ? "text-warning" : "text-muted-foreground")}>{r.note}</span>}
+                        {r.status !== "met" && open !== r.text && (
+                          <div className="mt-1">
+                            <button type="button" onClick={() => startAsk(r.text)} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                              <HandHeart className="h-3.5 w-3.5" aria-hidden /> I have this
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+                {open === r.text && !claim && (
+                  <div className="ml-6 mt-2 space-y-2.5 rounded-xl border bg-muted/30 p-3">
+                    <label htmlFor="claim" className="block text-sm font-medium">
+                      Do you have this? Tell us about it.
+                    </label>
+                    <p className="text-xs text-muted-foreground">Say what you did and roughly where and for how long. Write it like a line on a resume, in your own words.</p>
+                    <Textarea id="claim" value={detail} onChange={(e) => setDetail(e.target.value)} rows={3} maxLength={400} placeholder="For example: Built weekly reports in SQL for the district team at Bayside, 2021 to 2024" className="text-sm" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select value={where} onValueChange={setWhere}>
+                        <SelectTrigger className="h-9 w-full text-sm sm:w-[280px]" aria-label="What to do with it">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="remember">Just remember it for this job</SelectItem>
+                          {BASE_RESUME.roles.map((role) => (
+                            <SelectItem key={role.id} value={role.id}>
+                              Add it to my resume under {role.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button size="sm" onClick={() => save(r.text)}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setOpen(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </Card>

@@ -8,9 +8,11 @@ interface RefreshState {
   error: string;
   lastRunAt: number | null;
   lastFound: number | null;
+  /** Why a search found nothing, when we know. */
+  lastNote: string;
 }
 
-let state: RefreshState = { running: false, progress: null, error: "", lastRunAt: null, lastFound: null };
+let state: RefreshState = { running: false, progress: null, error: "", lastRunAt: null, lastFound: null, lastNote: "" };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<RefreshState>) => {
   state = { ...state, ...patch };
@@ -39,7 +41,7 @@ export async function startRefresh(beforeSearch?: () => Promise<void>) {
       onProgress: (p) => set({ progress: p }),
       onJobs: (jobs) => setLiveJobs(jobs),
     });
-    set({ running: false, lastRunAt: Date.now(), lastFound: res.total });
+    set({ running: false, lastRunAt: Date.now(), lastFound: res.total, lastNote: res.note ?? "" });
   } catch (e) {
     set({ running: false, error: (e as Error).message });
   }

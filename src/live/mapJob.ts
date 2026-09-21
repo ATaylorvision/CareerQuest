@@ -36,6 +36,7 @@ export interface MatchRow {
   /** When this was first shown to the person, and how far it is from the nearest place they named. */
   first_shown_at?: string | null;
   distance_miles?: number | null;
+  kept?: boolean | null;
   translator: {
     field?: string;
     category?: string;
@@ -145,6 +146,7 @@ export function rowToJob(row: JobRow, match: MatchRow): Job {
     checkedAt: row.company_site_checked_at ?? undefined,
     distanceMiles: row.remote_type === "remote" ? null : (match.distance_miles ?? milesFromHome(row.latitude, row.longitude)),
     shownAt: match.first_shown_at ?? undefined,
+    kept: !!match.kept,
     // Marks jobs whose full analysis (translations, requirement checks, gaps) has not run yet.
     ...(t.enriched ? {} : { translations: undefined }),
   };

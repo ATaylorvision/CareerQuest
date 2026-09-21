@@ -538,3 +538,17 @@ create table if not exists public.geo_cache (
 );
 alter table public.geo_cache enable row level security;
 revoke all on public.geo_cache from anon, authenticated;
+
+-- ---------------------------------------------------------------
+-- A match that has been shown to someone stays theirs. `kept` is set the
+-- first time a listing passes the match rules for that person, and after
+-- that no later rule change can take it away. Everything that already
+-- existed when this was added counts as shown.
+-- ---------------------------------------------------------------
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'job_matches' and column_name = 'kept') then
+    alter table public.job_matches add column kept boolean not null default false;
+    update public.job_matches set kept = true;
+  end if;
+end $$;

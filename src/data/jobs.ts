@@ -74,6 +74,8 @@ export interface Job {
   distanceMiles?: number | null;
   /** When this listing was first shown to the signed in person. Newest to them is shown first. */
   shownAt?: string;
+  /** Already shown to this person once, so it stays in their matches whatever the rules say later. */
+  kept?: boolean;
 }
 
 /* ------------------------------------------------------------------ */

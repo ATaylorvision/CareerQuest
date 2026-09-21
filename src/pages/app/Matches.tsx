@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Filter, Loader2, RefreshCcw, RotateCcw, Search, SlidersHorizontal, Sparkle } from "lucide-react";
 import { PageHeader, Chip, EmptyState } from "@/components/common";
 import { JobCard } from "@/components/JobCard";
@@ -15,6 +16,7 @@ import { byShown, contextFor, MIN_SCORE, splitMatches } from "@/lib/matchRules";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useLive } from "@/live/LiveProvider";
 import { startRefresh, useRefreshState } from "@/live/refreshStore";
+import { keepShown } from "@/live/keep";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { cn } from "@/lib/utils";
 
@@ -135,6 +137,14 @@ export default function Matches() {
     return { list: arr, weakerCount: rules?.weaker.length ?? 0, dismissed: state.dismissedJobIds.length };
   }, [f, live, state.applications, state.dismissedJobIds, state.legitThreshold, state.prefs, state.profile.location, showWeaker, rs.running]);
 
+  // Whatever passes the rules now stays in this person's matches from here on.
+  useEffect(() => {
+    if (live) void keepShown(state);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, list.length, rs.running]);
+
+  const needsSetup = live && (!state.profile.location.trim() || state.prefs.roles.length === 0);
+
   const activeCount = (f.ccf ? 1 : 0) + f.modes.length + f.cats.length + (f.posted ? 1 : 0);
 
   return (
@@ -151,6 +161,23 @@ export default function Matches() {
         }
       />
 
+      {needsSetup && (
+        <div className="mb-5 rounded-xl border border-warning-border bg-warning-soft p-4 text-sm" role="status">
+          <div className="font-semibold">Tell us where you want to work and what you are looking for</div>
+          <p className="mt-1 text-foreground/80">
+            {!state.profile.location.trim() && "Add your home base, so we only show jobs you could actually get to. "}
+            {state.prefs.roles.length === 0 && "Add the roles you want, so we search for those. "}
+          </p>
+          <Button asChild size="sm" className="mt-3">
+            <Link to="/app/settings">Open settings</Link>
+          </Button>
+        </div>
+      )}
+      {live && !rs.running && rs.lastFound === 0 && rs.lastNote && !needsSetup && (
+        <p className="mb-4 rounded-lg bg-muted px-3 py-2 text-sm" role="status">
+          {rs.lastNote}
+        </p>
+      )}
       {live && (rs.running || rs.error) && (
         <div className="mb-5 rounded-xl border bg-card p-4 text-sm shadow-card animate-fade-up" role="status" aria-live="polite">
           {rs.running ? (

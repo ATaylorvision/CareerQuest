@@ -74,6 +74,8 @@ export interface AppState {
     added?: Record<string, Record<string, { id: string; text: string }[]>>;
     /** A full posting pasted in where the listing only gave an excerpt. Saved with the rest of the working state, so private to the account and capped in size. */
     postingText?: Record<string, string>;
+    /** Requirements the person told us they do meet, per job then per requirement, in their own words. */
+    claims?: Record<string, Record<string, { detail: string; at: string }>>;
     /** Font, size, spacing and margins for the printed page. One choice for the account, so every version looks alike. */
     format?: ResumeFormat;
     /** Name and contact details belong to the account, so every version shares them. */

@@ -10,6 +10,7 @@ import { gapAggregate } from "@/lib/selectors";
 import { SEVERITY_LABEL } from "@/data/gaps";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { cn } from "@/lib/utils";
+import { linksFor } from "@/data/resourceLinks";
 
 export default function Roadmap() {
   useDocTitle("Skill Gap Roadmap");
@@ -135,7 +136,14 @@ export default function Roadmap() {
                                     {st === "started" && <Pill size="xs" tone="primary">In progress</Pill>}
                                   </div>
                                 </div>
-                                <div className="flex shrink-0 gap-1.5">
+                                <div className="flex shrink-0 flex-wrap gap-1.5 sm:justify-end">
+                                  {linksFor(r).map((l) => (
+                                    <Button key={l.url} size="xs" variant="outline" asChild>
+                                      <a href={l.url} target="_blank" rel="noopener noreferrer" onClick={() => st !== "done" && st !== "started" && setRes(gap.id, r.id, "started")}>
+                                        <ExternalLink /> {l.label}
+                                      </a>
+                                    </Button>
+                                  ))}
                                   {st !== "done" && st !== "started" && (
                                     <Button size="xs" variant="outline" onClick={() => setRes(gap.id, r.id, "started")}>
                                       <Play /> Start
@@ -157,7 +165,7 @@ export default function Roadmap() {
                         })}
                       </ul>
                       <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <ExternalLink className="h-3.5 w-3.5" /> Resource links open the provider in the real product. CareerQuest takes no referral fees.
+                        <ExternalLink className="h-3.5 w-3.5" /> Links open in a new tab. Some go to a provider's own search so you can pick the option you like. CareerQuest takes no referral fees.
                       </p>
                     </div>
                     <div className="space-y-4">

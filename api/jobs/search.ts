@@ -72,8 +72,12 @@ export default route(async (req, _res, user) => {
   const openToRemote = remotePref === "remote" || remotePref === "any" || listedRemote;
   const remoteOnly = remotePref === "remote";
 
-  if (areas.length === 0 && !openToRemote) {
+  // Without a home base we would be guessing where to look, and would show people jobs in cities they will never work in.
+  if (areas.length === 0 && !remoteOnly) {
     return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange: 0, note: "Add your home base in Settings so we can search where you actually live." };
+  }
+  if (!profile?.target_roles?.length) {
+    return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange: 0, note: "Add the roles you are looking for in Settings, and we will search for those." };
   }
 
   // Coordinates for home, looked up once and kept on the profile afterwards.

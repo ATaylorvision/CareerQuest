@@ -30,7 +30,7 @@ interface SearchResult {
 export async function loadJobs(): Promise<Job[]> {
   const { data, error } = await requireSupabase()
     .from("job_matches")
-    .select("score, breakdown, why, gaps, career_changer_friendly, dismissed, translator, first_shown_at, distance_miles, jobs(*)")
+    .select("score, breakdown, why, gaps, career_changer_friendly, dismissed, translator, first_shown_at, distance_miles, kept, jobs(*)")
     .order("first_shown_at", { ascending: false })
     .limit(200);
   if (error) throw new Error(error.message);
@@ -85,7 +85,7 @@ export async function enrichJob(id: string): Promise<Job | null> {
   await api("jobs/match", { ids: [id], mode: "detail" });
   const { data } = await requireSupabase()
     .from("job_matches")
-    .select("score, breakdown, why, gaps, career_changer_friendly, dismissed, translator, first_shown_at, distance_miles, jobs(*)")
+    .select("score, breakdown, why, gaps, career_changer_friendly, dismissed, translator, first_shown_at, distance_miles, kept, jobs(*)")
     .eq("job_id", id)
     .maybeSingle();
   if (!data?.jobs) return null;

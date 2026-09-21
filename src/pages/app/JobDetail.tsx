@@ -41,7 +41,7 @@ import { relDays } from "@/lib/date";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { api } from "@/live/api";
 import { patchJob } from "@/data/jobs";
-import { LiveAboutCard, LiveCompanyCard, LiveGapsCard, LiveTranslatorCard, useEnrich } from "./JobDetailLive";
+import { LiveAboutCard, LiveCompanyCard, LiveGapsCard, LiveRequirementsCard, LiveTranslatorCard, useEnrich } from "./JobDetailLive";
 
 // Results of "Check this listing again" survive the page refresh that follows an update.
 const verifyResults = new Map<string, { tone: "success" | "danger" | "warning" | "info"; text: string }>();
@@ -341,6 +341,17 @@ export default function JobDetail() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
         <div className="min-w-0 space-y-6">
+          {isLive ? (
+            <>
+              {/* What the job is, then whether you fit it, then the detail behind the score. */}
+              <LiveAboutCard job={job} />
+              <LiveRequirementsCard job={job} loading={enrich.loading} />
+              <LiveGapsCard job={job} loading={enrich.loading} />
+              <LiveTranslatorCard job={job} loading={enrich.loading} failed={enrich.failed} />
+              <Breakdown job={job} />
+            </>
+          ) : (
+            <>
           <Breakdown job={job} />
 
           {isLive ? (
@@ -359,7 +370,7 @@ export default function JobDetail() {
           )}
 
           {isLive ? (
-            <LiveAboutCard job={job} loading={enrich.loading} />
+            <LiveAboutCard job={job} />
           ) : (
           <Card>
             <SectionTitle>About the role</SectionTitle>
@@ -419,10 +430,12 @@ export default function JobDetail() {
             )}
           </Card>
           )}
+            </>
+          )}
         </div>
 
         <div className="space-y-6">
-          {!job.imported && <WhyThisScore job={job} />}
+          {!job.imported && !isLive && <WhyThisScore job={job} />}
 
           {!job.imported && (
           <Card>
@@ -487,6 +500,8 @@ export default function JobDetail() {
             </div>
           </Card>
           )}
+
+          {!job.imported && isLive && <WhyThisScore job={job} />}
 
           <SalaryCard job={job} />
         </div>

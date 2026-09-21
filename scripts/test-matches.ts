@@ -96,6 +96,20 @@ test("weak matches are kept aside so they can be shown on request", () => {
 });
 test("a job you added yourself never appears in matches", () => assert.equal(splitMatches([job({ id: "a", imported: true })], ctx()).shown.length, 0));
 
+// once shown, always shown
+test("a match already shown stays even if it is now too far, old, cheap and weak", () => assert.equal(whyExcluded(job({ id: "a", kept: true, distanceMiles: 900, location: "Reno, NV", postedDaysAgo: 80, salary: [10000, 20000], match: 20 }), ctx()), null));
+test("a kept match still goes away once you apply to it", () => assert.equal(whyExcluded(job({ id: "a", kept: true }), ctx({}, [{ jobId: "a", column: "applied", receipt: { submittedAt: "2026-01-01" } }])), "applied"));
+test("a kept match still goes away when you mark it not for me", () => assert.equal(whyExcluded(job({ id: "a", kept: true }), contextFor({ ...(state() as object), dismissedJobIds: ["a"] } as never)), "dismissed"));
+
+// a short list is topped up, never left empty
+test("with few good matches, the best fair ones fill the list", () => {
+  const jobs = [job({ id: "a", match: 80 }), job({ id: "b", match: 58 }), job({ id: "c", match: 52 }), job({ id: "d", match: 47 }), job({ id: "e", match: 30 })];
+  const s = splitMatches(jobs, ctx());
+  assert.deepEqual(s.shown.map((j) => j.id), ["a", "b", "c", "d"]);
+  assert.deepEqual(s.weaker.map((j) => j.id), ["e"]);
+});
+test("a score under the floor is never brought in to fill", () => assert.equal(splitMatches([job({ id: "a", match: 44 })], ctx()).shown.length, 0));
+
 // order
 test("newest to you comes first, whatever the posting date", () => {
   const a = job({ id: "a", postedDaysAgo: 1, shownAt: "2026-09-01T00:00:00Z" });
