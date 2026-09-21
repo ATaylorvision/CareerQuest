@@ -71,6 +71,18 @@ npm run push-env      # copies the keys from .env.local to Vercel, all three tar
 npx vercel --prod
 ```
 
+**If a deploy shows `BLOCKED` or sits on `UNKNOWN`:** Vercel refuses a deployment whose git commit
+author is not a member of the Vercel account, and it reads the author from this folder's git history.
+Deploys worked before the folder became a repo. Until the commit email matches a Vercel member (or the
+GitHub integration is connected), deploy without git metadata:
+
+```bash
+GIT_DIR=/nonexistent npx vercel --prod --yes
+```
+
+`npx vercel inspect <url>` only says `UNKNOWN`. The real reason is in the deployment's `readyStateReason`
+field on the API, which is where this was found.
+
 `push-env` is safe to re-run: it overwrites each variable in place and never removes one first.
 `VITE_` values are stored as plain config because they are compiled into the browser bundle
 and are public by definition. Everything else is stored as a secret.
@@ -94,6 +106,25 @@ Two rules worth knowing before changing the schema:
 2. **`guard_profile_columns` is the backstop.** Grants are easy to widen by accident, so a trigger
    refuses any change to `is_admin`, the billing columns, `add_ons`, `email` or `id` unless the
    caller is the service role. Server code keeps working; a browser session cannot get past it.
+
+### Daily limits and headers
+
+Every endpoint that spends money takes from `take_quota()` before it does any work: one atomic counter
+per person, per kind of work, per UTC day (`api_usage`). Limits live next to each endpoint. The security
+suite proves the limit bites, that it is per person, and that a browser cannot call or write it.
+
+`vercel.json` sets a content security policy that refuses inline scripts, plus nosniff, frame denial, a
+referrer policy and a permissions policy. Anything that needs a script must be a same origin file (see
+`public/theme-init.js`); print windows are started from the opener rather than by a script in the page.
+The Supabase project host is written into `connect-src`, so a new project needs that line updated.
+
+### npm audit, triaged
+
+Nine advisories, one of which ships to browsers. `react-router-dom` (moderate, open redirect through a
+backslash in a link target) is not exploitable here: every link is a fixed path or a fixed prefix plus our
+own id, and nothing reads a `next` or `redirect` parameter. Fixing it means a major router upgrade. The
+other eight (`vite`, `esbuild`, `@vercel/node` and what it pulls in) are dev server or build tooling and
+are never in the production bundle. Revisit if anything starts navigating to a URL a person can supply.
 
 ## Layout
 
