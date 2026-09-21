@@ -15,7 +15,7 @@ export const localDay = () => new Date().toLocaleDateString("en-CA");
 export function buildLivePlan(state: AppState): PlanItem[] {
   const day = localDay();
   const id = (k: string) => `${day}:${k}`;
-  const visible = JOBS.filter((j) => j.legit.score >= state.legitThreshold && !state.dismissedJobIds.includes(j.id));
+  const visible = JOBS.filter((j) => !j.imported && j.legit.score >= state.legitThreshold && !state.dismissedJobIds.includes(j.id));
   const appliedIds = new Set(state.applications.filter((a) => a.receipt?.submittedAt).map((a) => a.jobId));
   const savedIds = new Set(state.applications.map((a) => a.jobId));
   const ranked = [...visible].sort((a, b) => b.match - a.match);

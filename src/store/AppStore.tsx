@@ -89,11 +89,11 @@ export interface AppState {
   answered?: Record<string, boolean>;
 }
 
-const KEY = "cq-state-v5";
+const KEY = "cq-state-v6";
 
 export function seedState(): AppState {
   return {
-    v: 5,
+    v: 6,
     mode: "none",
     authed: false,
     onboarded: false,
@@ -146,7 +146,7 @@ function load(): AppState {
     const raw = sessionStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AppState;
-      if (parsed.v === 5 && parsed.mode !== "live") return parsed;
+      if (parsed.v === 6 && parsed.mode !== "live") return parsed;
     }
   } catch {
     /* storage can be unavailable in private windows */

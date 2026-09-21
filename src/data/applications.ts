@@ -2,7 +2,12 @@ import { daysAgo, daysFromNow } from "@/lib/date";
 import { jobById, type Job } from "./jobs";
 import { BASE_RESUME } from "./user";
 
-export type Column = "saved" | "applied" | "screening" | "interview" | "offer" | "closed";
+/**
+ * Where an application stands. A rejection and a withdrawal are different
+ * outcomes, so they are different columns: the first is the number people most
+ * want to see, and the second includes employers who simply never replied.
+ */
+export type Column = "saved" | "applied" | "screening" | "interview" | "offer" | "rejected" | "withdrawn";
 export type Method = "submitted" | "prefilled" | "manual";
 export type EventType =
   | "saved"
@@ -53,7 +58,8 @@ export const COLUMNS: { id: Column; label: string; hint: string }[] = [
   { id: "screening", label: "Screening", hint: "Recruiter contact" },
   { id: "interview", label: "Interview", hint: "Talking to the team" },
   { id: "offer", label: "Offer", hint: "Decision time" },
-  { id: "closed", label: "Closed", hint: "Rejected, withdrawn, or no response" },
+  { id: "rejected", label: "Rejected", hint: "They said no" },
+  { id: "withdrawn", label: "Withdrawn", hint: "You withdrew, or they never replied" },
 ];
 
 export const METHOD_META: Record<Method, { label: string; tone: "success" | "info" | "warning"; help: string }> = {
@@ -188,8 +194,8 @@ const APP_SEEDS: AppSeed[] = [
 
   { id: "a13", jobId: "j26", column: "offer", savedDaysAgo: 31, method: "submitted", submittedDaysAgo: 30, version: "v-supply", verified: true, code: "GHH-2291", confirmSource: "On screen confirmation captured", events: [["confirmed", 30], ["viewed", 27], ["screen", 22], ["interview", 15, "Interview with the clinic director."], ["interview", 9, "Final interview with the COO."], ["offer", 2, "Offer: $54,000 base, start in 3 weeks. Response due in 5 days."]], nextStep: "Offer response due in 5 days. Talk it through with Copilot." },
 
-  { id: "a14", jobId: "j12", column: "closed", savedDaysAgo: 36, method: "submitted", submittedDaysAgo: 35, version: "v-base", verified: true, code: "BFS-1027", confirmSource: "On screen confirmation captured", events: [["confirmed", 35], ["viewed", 31], ["rejected", 20, "They chose a candidate with warehouse experience. Recruiter said to reapply for supervisor roles."]] },
-  { id: "a15", jobId: "j28", column: "closed", savedDaysAgo: 41, method: "prefilled", submittedDaysAgo: 40, version: "v-base", verified: false, events: [["noresponse", 26]] },
+  { id: "a14", jobId: "j12", column: "rejected", savedDaysAgo: 36, method: "submitted", submittedDaysAgo: 35, version: "v-base", verified: true, code: "BFS-1027", confirmSource: "On screen confirmation captured", events: [["confirmed", 35], ["viewed", 31], ["rejected", 20, "They chose a candidate with warehouse experience. Recruiter said to reapply for supervisor roles."]] },
+  { id: "a15", jobId: "j28", column: "withdrawn", savedDaysAgo: 41, method: "prefilled", submittedDaysAgo: 40, version: "v-base", verified: false, events: [["noresponse", 26]] },
 ];
 
 export function buildSeedApplications(): Application[] {

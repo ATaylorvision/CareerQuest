@@ -20,9 +20,9 @@ export function proofScore(apps: Application[]) {
   return { pct, verified: verified.length, total: submitted.length, byMethod, unverified: submitted.filter((a) => !a.receipt!.confirmation.verified) };
 }
 
-/** Jobs the user has shown interest in: anything in the tracker that is not closed. */
+/** Jobs the user has shown interest in: anything in the tracker that is still open. */
 export function trackedJobs(s: AppState): Job[] {
-  const ids = new Set(s.applications.filter((a) => a.column !== "closed").map((a) => a.jobId));
+  const ids = new Set(s.applications.filter((a) => a.column !== "rejected" && a.column !== "withdrawn").map((a) => a.jobId));
   return JOBS.filter((j) => ids.has(j.id));
 }
 
@@ -83,7 +83,7 @@ export function appForJob(s: AppState, jobId: string) {
 }
 
 export function visibleJobs(s: AppState) {
-  return JOBS.filter((j) => j.legit.score >= s.legitThreshold && !s.dismissedJobIds.includes(j.id));
+  return JOBS.filter((j) => !j.imported && j.legit.score >= s.legitThreshold && !s.dismissedJobIds.includes(j.id));
 }
 
 /* ---------------- Studio ---------------- */

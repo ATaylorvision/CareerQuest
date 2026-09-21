@@ -24,6 +24,8 @@ const STATUS_TONE: Record<string, string> = {
   interview: "bg-warning/15 text-warning",
   offer: "bg-success/15 text-success",
   closed: "bg-muted text-muted-foreground",
+  rejected: "bg-danger/15 text-danger",
+  withdrawn: "bg-muted text-muted-foreground",
 };
 
 export default function AdminApplications() {

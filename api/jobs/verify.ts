@@ -9,7 +9,8 @@ export default route(async (req, _res, user) => {
   if (!jobId) throw new HttpError(400, "Which job?");
   const db = admin();
   const { data: job } = await db.from("jobs").select("*").eq("id", jobId).single();
-  if (!job) throw new HttpError(404, "That listing was not found.");
+  if (!job || (job.owner_id && job.owner_id !== user.id)) throw new HttpError(404, "That listing was not found.");
+  if (job.owner_id) throw new HttpError(400, "You added this job yourself, so there is no employer listing for us to check.");
 
   const board = await findBoard(job.company);
   const check = await checkCompanySite(job.company, job.title, job.location ?? "");

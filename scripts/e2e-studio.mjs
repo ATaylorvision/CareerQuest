@@ -135,7 +135,7 @@ try {
   const kwJob = fresh ?? (await db.from("jobs").select("id, title, description").gt("description", "").limit(1).maybeSingle()).data;
   const k1 = await call(token, { action: "keywords", jobId: kwJob.id });
   ok("keywords come back as required and preferred lists", k1.status === 200 && Array.isArray(k1.json?.must) && Array.isArray(k1.json?.nice), `${k1.json?.must?.length} required, ${k1.json?.nice?.length} preferred, source ${k1.json?.source}`);
-  ok("a posting yields some required terms", (k1.json?.must?.length ?? 0) >= 3);
+  ok("a posting yields some required terms", (k1.json?.must?.length ?? 0) >= ((kwJob.description ?? "").length >= 400 ? 3 : 1), `posting is ${(kwJob.description ?? "").length} characters`);
   // Every term must come from the posting. Compared loosely on word stems.
   const norm = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ");
   const haystack = norm(`${kwJob.title} ${kwJob.description}`);

@@ -135,7 +135,7 @@ export default function Matches() {
 
   const { list, hiddenByShield, dismissed } = useMemo(() => {
     const q = f.q.trim().toLowerCase();
-    let arr = JOBS.filter((j) => !state.dismissedJobIds.includes(j.id));
+    let arr = JOBS.filter((j) => !j.imported && !state.dismissedJobIds.includes(j.id));
     const hidden = arr.filter((j) => j.legit.score < state.legitThreshold);
     if (!showHidden) arr = arr.filter((j) => j.legit.score >= state.legitThreshold);
     if (q) arr = arr.filter((j) => `${j.title} ${j.company.name} ${j.location} ${j.category}`.toLowerCase().includes(q));

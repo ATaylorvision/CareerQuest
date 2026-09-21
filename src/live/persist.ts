@@ -25,7 +25,8 @@ const STATUS: Record<string, string> = {
   screening: "screening",
   interview: "interview",
   offer: "offer",
-  closed: "closed",
+  rejected: "rejected",
+  withdrawn: "withdrawn",
 };
 
 /** Upserts one application and replaces its timeline. */
@@ -96,5 +97,18 @@ export async function saveApplicationStatus(jobId: string, column: string): Prom
       .eq("job_id", jobId);
   } catch (e) {
     console.error("Could not update that application:", e);
+  }
+}
+
+/** Takes an application out of the database when the person removes its card. */
+export async function removeApplication(jobId: string): Promise<void> {
+  if (!supabase) return;
+  try {
+    const user_id = await uid();
+    if (!user_id) return;
+    // The timeline goes with it, by the database's own cascade.
+    await supabase.from("applications").delete().eq("user_id", user_id).eq("job_id", jobId);
+  } catch (e) {
+    console.error("Could not remove that application:", e);
   }
 }

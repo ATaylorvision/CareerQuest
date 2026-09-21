@@ -21,7 +21,7 @@ import { useDocTitle } from "@/hooks/useDocTitle";
 import { cn } from "@/lib/utils";
 import { api, fileToBase64 } from "@/live/api";
 
-const EVENT_COLUMN: Partial<Record<EventType, Column>> = { review: "applied", screen: "screening", interview: "interview", offer: "offer", rejected: "closed", noresponse: "closed" };
+const EVENT_COLUMN: Partial<Record<EventType, Column>> = { review: "applied", screen: "screening", interview: "interview", offer: "offer", rejected: "rejected", noresponse: "withdrawn" };
 
 /** Rebuild the exact document for a saved version. */
 function resumeForVersion(versionId: string, changeIds?: string[]) {
@@ -105,7 +105,9 @@ export default function Receipt() {
 
   const r = app.receipt;
   const version = r ? state.resume.versions.find((v) => v.id === r.resumeVersionId) : undefined;
-  const resumeDoc = r ? resumeForVersion(r.resumeVersionId, version?.changeIds) : null;
+  // Added by the person after applying somewhere else. We never saw what they sent, so we show nothing rather than a guess.
+  const outside = !!r && r.resumeVersionId === "";
+  const resumeDoc = r && !outside ? resumeForVersion(r.resumeVersionId, version?.changeIds) : null;
   const column = COLUMNS.find((c) => c.id === app.column)!;
   const events = [...app.events].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
@@ -260,7 +262,7 @@ export default function Receipt() {
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Resume version</dt>
-              <dd className="mt-0.5 font-medium">{version?.name ?? "Deleted version (copy kept below)"}</dd>
+              <dd className="mt-0.5 font-medium">{outside ? "Sent outside CareerQuest" : (version?.name ?? "Deleted version (copy kept below)")}</dd>
             </div>
           </dl>
         )}
@@ -346,7 +348,13 @@ export default function Receipt() {
             </div>
           </Card>
 
-          {r && (
+          {outside && (
+            <Card>
+              <p className="text-sm font-medium">You applied outside CareerQuest</p>
+              <p className="mt-1 text-sm text-muted-foreground">You added this one yourself, so we did not see the resume, letter or answers you sent and will not pretend to. The timeline above is what you have told us.</p>
+            </Card>
+          )}
+          {r && !outside && (
             <Accordion type="multiple" defaultValue={["fields"]} className="space-y-4">
               <AccordionItem value="resume" className="card-base border px-5">
                 <AccordionTrigger className="hover:no-underline">

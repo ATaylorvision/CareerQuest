@@ -14,7 +14,8 @@
     "e2e:admin": "node scripts/e2e-admin.mjs",
     "e2e:studio": "node scripts/e2e-studio.mjs",
     "security": "node scripts/security-check.mjs",
-    "test:ats": "tsx scripts/test-ats.ts"
+    "test:ats": "tsx scripts/test-ats.ts",
+    "test:tracker": "tsx scripts/test-tracker.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

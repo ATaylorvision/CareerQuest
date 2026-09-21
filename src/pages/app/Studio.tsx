@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, CheckCheck, Download, FileDown, Languages, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCheck, ClipboardPaste, Download, FileDown, Languages, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
 import { AiWorking, Card, PageHeader, Segmented, SkeletonLines } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { ResumeDocument } from "@/components/studio/ResumeDocument";
 import { ChangeCard, GapsPanel, TranslatorPanel, VersionsPanel } from "@/components/studio/panels";
 import { AtsScorePanel, KeywordPanel } from "@/components/studio/AtsPanels";
 import { TemplatePicker } from "@/components/TemplatePicker";
+import { ImportJobDialog } from "@/components/ImportJobDialog";
 import { useStore } from "@/store/AppStore";
 import { JOBS, jobById } from "@/data/jobs";
 import type { TailorChange } from "@/data/resumeStudio";
@@ -48,6 +49,7 @@ export default function Studio() {
   const [failed, setFailed] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showLayouts, setShowLayouts] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     if (state.resume.jobId !== job.id) update((s) => void (s.resume.jobId = job.id));
@@ -258,7 +260,8 @@ export default function Studio() {
 
   const jobOptions = useMemo(() => {
     const tracked = state.applications.map((a) => a.jobId);
-    const ids = Array.from(new Set([job.id, ...tracked, ...JOBS.filter((j) => j.match >= 85).map((j) => j.id)]));
+    const added = JOBS.filter((j) => j.imported).map((j) => j.id);
+    const ids = Array.from(new Set([job.id, ...added, ...tracked, ...JOBS.filter((j) => !j.imported && j.match >= 85).map((j) => j.id)]));
     return ids.map((id) => jobById(id)!).filter((j) => j && j.legit.badge !== "ghost");
   }, [state.applications, job.id]);
 
@@ -315,13 +318,16 @@ export default function Studio() {
               <SelectContent>
                 {jobOptions.map((j) => (
                   <SelectItem key={j.id} value={j.id}>
-                    {j.title} · {j.company.name} · {j.match}% match
+                    {j.title} · {j.company.name} · {j.imported ? (j.match > 0 ? `added by you, ${j.match}% match` : "added by you") : `${j.match}% match`}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+              <ClipboardPaste /> Add a job
+            </Button>
             <Segmented<Doc>
               value={doc}
               onChange={setDoc}
@@ -558,6 +564,7 @@ export default function Studio() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ImportJobDialog open={importOpen} onOpenChange={setImportOpen} onAdded={(id) => setParams({ job: id })} />
     </div>
   );
 }

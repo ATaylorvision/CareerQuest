@@ -1,6 +1,8 @@
 import { HttpError, admin, body, route, quota, type AuthedUser } from "./_lib/http.js";
 import { DEEP_MODEL, FAST_MODEL, numbersSupported, structured } from "./_lib/claude.js";
 import { containsRun, extractKeywordsBasic, tokens, verbatim } from "../src/lib/keywords.js";
+import { remoteType } from "./_lib/sources.js";
+import { randomUUID } from "node:crypto";
 
 /**
  * Resume Studio, Cover Letter Studio and Interview Prep, in one function.
@@ -89,11 +91,12 @@ async function load(user: AuthedUser, jobId: string) {
   const [{ data: resumeRow }, { data: profile }, { data: job }, { data: match }] = await Promise.all([
     db.from("resumes").select("parsed").eq("user_id", user.id).eq("is_base", true).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     db.from("profiles").select("full_name, situation, prev_field, target_field, headline").eq("id", user.id).single(),
-    db.from("jobs").select("id, title, company, location, description, salary_min, salary_max").eq("id", jobId).maybeSingle(),
+    db.from("jobs").select("id, title, company, location, description, salary_min, salary_max, owner_id").eq("id", jobId).maybeSingle(),
     db.from("job_matches").select("gaps, why, score").eq("user_id", user.id).eq("job_id", jobId).maybeSingle(),
   ]);
   if (!resumeRow?.parsed) throw new HttpError(400, "Upload your resume first so we have something to work from.");
-  if (!job) throw new HttpError(404, "We could not find that listing. Try opening it again from your matches.");
+  // A job someone pasted in is theirs alone. To anyone else it does not exist.
+  if (!job || (job.owner_id && job.owner_id !== user.id)) throw new HttpError(404, "We could not find that listing. Try opening it again from your matches.");
   return { resume: resumeRow.parsed as Resume, profile, job: job as JobRow, match };
 }
 
@@ -402,8 +405,8 @@ const KEYWORDS_SYSTEM = `You pull out the terms an applicant screening system wo
  */
 async function keywords(user: AuthedUser, jobId: string) {
   const db = admin();
-  const { data: job } = await db.from("jobs").select("id, title, description, keywords").eq("id", jobId).maybeSingle();
-  if (!job) throw new HttpError(404, "We could not find that listing.");
+  const { data: job } = await db.from("jobs").select("id, title, description, keywords, owner_id").eq("id", jobId).maybeSingle();
+  if (!job || (job.owner_id && job.owner_id !== user.id)) throw new HttpError(404, "We could not find that listing.");
 
   const cached = job.keywords as { must?: string[]; nice?: string[] } | null;
   if (cached?.must?.length || cached?.nice?.length) return { jobId, must: cached.must ?? [], nice: cached.nice ?? [], source: "cache" as const };
@@ -465,6 +468,103 @@ ${text}`, asked) ?? asked;
   }
 }
 
+/* ---------------- Adding a job yourself ---------------- */
+
+const oneLine = (s: unknown, max: number) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+
+/** The most jobs one person can keep, so the table cannot be stuffed. */
+const MAX_IMPORTS = 200;
+
+/**
+ * Saves a job the person pasted in, private to them. Nothing is fetched from
+ * the link: it is only kept so they can find the posting again. Fetching an
+ * address a stranger supplies would let them point our server at anything, so
+ * the description they paste is the only text we ever read.
+ */
+async function importJob(user: AuthedUser, p: { title?: string; company?: string; location?: string; url?: string; description?: string }) {
+  const title = oneLine(p.title, 140);
+  const company = oneLine(p.company, 120);
+  const location = oneLine(p.location, 120);
+  const description = String(p.description ?? "").replace(/\r/g, "").trim().slice(0, 20000);
+
+  if (title.length < 2) throw new HttpError(400, "What is the job title?");
+  if (company.length < 2) throw new HttpError(400, "Which company is it with?");
+  if (description.length < 200) throw new HttpError(400, "Paste the whole job description from the employer's page, not just a line or two. It helps us read what they really ask for.");
+
+  let url: string | null = null;
+  if (String(p.url ?? "").trim()) {
+    try {
+      const u = new URL(String(p.url).trim());
+      if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("scheme");
+      url = u.toString().slice(0, 500);
+    } catch {
+      throw new HttpError(400, "That link does not look right. It should start with https://");
+    }
+  }
+
+  const db = admin();
+  await quota(user, "import", 30, "adding jobs");
+  const { count } = await db.from("jobs").select("id", { count: "exact", head: true }).eq("owner_id", user.id);
+  if ((count ?? 0) >= MAX_IMPORTS) throw new HttpError(400, `You have added ${MAX_IMPORTS} jobs, which is the most we can keep for one account.`);
+
+  const externalId = randomUUID();
+  const id = `mine:${externalId}`;
+  const mode = remoteType({ title, description, location, remote_hint: false });
+  const { error } = await db.from("jobs").insert({
+    id,
+    source: "imported",
+    external_id: externalId,
+    title,
+    company,
+    location: location || null,
+    remote_type: mode,
+    description,
+    apply_url: url,
+    employer_posted: true,
+    posted_at: new Date().toISOString(),
+    owner_id: user.id,
+  });
+  if (error) {
+    console.error("[import]", error.message);
+    throw new HttpError(500, "We could not save that job. Please try again.");
+  }
+  // A job only reaches the app through a match row. This one is a placeholder with a
+  // score of 0, meaning "not read yet", so the job is usable straight away and a slow
+  // or failed scoring run cannot leave it stranded. Scoring replaces it with the real read.
+  const { error: matchError } = await db.from("job_matches").insert({
+    user_id: user.id,
+    job_id: id,
+    score: 0,
+    breakdown: null,
+    why: null,
+    gaps: [],
+    translator: { field: "supply", category: "Operations", enriched: false },
+    career_changer_friendly: false,
+    dismissed: false,
+  });
+  if (matchError) {
+    console.error("[import match]", matchError.message);
+    await db.from("jobs").delete().eq("id", id);
+    throw new HttpError(500, "We could not save that job. Please try again.");
+  }
+  return { jobId: id, mode };
+}
+
+/**
+ * Takes back a job the person added. Only its owner can, and only jobs that were
+ * added by hand: the shared cache is never touched from here.
+ */
+async function removeJob(user: AuthedUser, jobId: string) {
+  const db = admin();
+  const { data: job } = await db.from("jobs").select("id, owner_id").eq("id", jobId).maybeSingle();
+  if (!job || job.owner_id !== user.id) throw new HttpError(404, "We could not find that job.");
+  // An application refuses to let its job go, so it leaves first. The match row goes with the job.
+  await db.from("applications").delete().eq("user_id", user.id).eq("job_id", jobId);
+  const { error } = await db.from("jobs").delete().eq("id", jobId).eq("owner_id", user.id);
+  if (error) throw new HttpError(500, "We could not remove that job. Please try again.");
+  return { ok: true };
+}
+
 /* ---------------- routing ---------------- */
 
 interface Payload {
@@ -474,6 +574,11 @@ interface Payload {
   addressGaps?: string[];
   question?: string;
   answer?: string;
+  title?: string;
+  company?: string;
+  location?: string;
+  url?: string;
+  description?: string;
 }
 
 export default route(async (req, _res, user) => {
@@ -498,6 +603,10 @@ export default route(async (req, _res, user) => {
       return feedback(user, p.question ?? "", p.answer ?? "");
     case "keywords":
       return keywords(user, p.jobId ?? "");
+    case "importJob":
+      return importJob(user, p);
+    case "removeJob":
+      return removeJob(user, p.jobId ?? "");
     default:
       throw new HttpError(400, "Unknown studio action.");
   }

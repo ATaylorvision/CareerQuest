@@ -480,3 +480,32 @@ grant execute on function public.take_quota(uuid, text, integer) to service_role
 -- rest of the job cache: it describes the posting, not any person.
 -- ---------------------------------------------------------------
 alter table public.jobs add column if not exists keywords jsonb;
+
+-- ---------------------------------------------------------------
+-- Phase 2: jobs a person adds themselves, and two more statuses.
+-- ---------------------------------------------------------------
+
+-- A job someone pastes in belongs to them alone. The shared cache stays shared
+-- (owner_id is null); an imported job is visible only to its owner.
+alter table public.jobs add column if not exists owner_id uuid references auth.users(id) on delete cascade;
+create index if not exists jobs_owner_idx on public.jobs (owner_id) where owner_id is not null;
+
+drop policy if exists "jobs readable" on public.jobs;
+create policy "jobs readable" on public.jobs for select to authenticated
+  using (owner_id is null or owner_id = auth.uid());
+
+-- "Closed" lumped rejections in with withdrawals and silence. They are different
+-- outcomes, and rejections are the number people most want to see.
+do $$
+declare c text;
+begin
+  for c in select conname from pg_constraint where conrelid = 'public.applications'::regclass and contype = 'c' and pg_get_constraintdef(oid) ilike '%status%' loop
+    execute format('alter table public.applications drop constraint %I', c);
+  end loop;
+  alter table public.applications add constraint applications_status_check
+    check (status in ('saved','applied','screening','interview','offer','rejected','withdrawn','closed'));
+end $$;
+-- Anything already stored as closed is a withdrawal or silence unless a rejection was logged.
+update public.applications a set status = 'rejected'
+  where a.status = 'closed' and exists (select 1 from public.application_events e where e.application_id = a.id and e.type = 'rejected');
+update public.applications set status = 'withdrawn' where status = 'closed';

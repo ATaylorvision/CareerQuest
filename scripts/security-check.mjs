@@ -148,6 +148,85 @@ try {
   const { data: jobNow } = await admin.from("jobs").select("title").eq("id", job.id).single();
   ok("a user cannot edit the shared job cache", jobNow.title !== "HACKED", `title is "${jobNow.title.slice(0, 40)}"`);
 
+  console.log("\n[9b] Jobs a person adds themselves are private");
+  const MARK = `SecretCo-${stamp}`;
+  const POSTING_TEXT = "We are hiring an operations coordinator to run daily scheduling, vendor coordination and inventory reporting. You will manage weekly cycle counts, work with Excel every day, and keep the team informed about delays. Two years of experience in a warehouse, retail or logistics setting is required, and forklift certification is preferred. Confidential internal posting.";
+  const made1 = await apiAs(a.token, "studio", { action: "importJob", title: "Operations Coordinator", company: MARK, location: "Providence, RI", url: "https://example.com/jobs/123", description: POSTING_TEXT });
+  ok("a valid job can be added", made1.status === 200 && String(made1.json?.jobId).startsWith("mine:"), made1.json?.jobId?.slice(0, 24));
+  const secretId = made1.json?.jobId;
+
+  const { data: aSees } = await a.client.from("jobs").select("id, company").eq("id", secretId);
+  ok("the owner can read it", aSees?.length === 1);
+  const { data: bSees } = await b.client.from("jobs").select("id, company").eq("id", secretId);
+  ok("nobody else can read it directly", (bSees?.length ?? 0) === 0, `${bSees?.length ?? 0} row(s) visible to B`);
+  const { data: bSearch } = await b.client.from("jobs").select("id").ilike("company", `%${MARK}%`);
+  ok("it does not show up in someone else's search of the table", (bSearch?.length ?? 0) === 0);
+  const { data: anonSees } = await createClient(URL, ANON, { auth: { persistSession: false } }).from("jobs").select("id").eq("id", secretId);
+  ok("a signed out visitor cannot read it", (anonSees?.length ?? 0) === 0);
+
+  // Every endpoint that takes a job id must treat someone else's private job as missing.
+  await admin.from("resumes").insert({ user_id: b.id, file_name: "b.pdf", is_base: true, parsed: { summary: "Operations lead with several years running stores.", roles: [], skills: [], education: [], certifications: [] } });
+  for (const [what, path, body] of [
+    ["tailoring against it", "studio", { action: "tailor", jobId: secretId }],
+    ["reading its keywords", "studio", { action: "keywords", jobId: secretId }],
+    ["writing a letter for it", "studio", { action: "letter", jobId: secretId, tone: "warm" }],
+    ["preparing interview questions for it", "studio", { action: "questions", jobId: secretId }],
+    ["scoring it", "jobs/match", { ids: [secretId], mode: "score" }],
+    ["checking the employer for it", "jobs/verify", { jobId: secretId }],
+  ]) {
+    const r = await apiAs(b.token, path, body);
+    ok(`someone else cannot start ${what}`, r.status === 404, `status ${r.status}`);
+  }
+  ok("the owner still can read its keywords", (await apiAs(a.token, "studio", { action: "keywords", jobId: secretId })).status === 200);
+  ok("employer checks are refused on a job you added yourself", (await apiAs(a.token, "jobs/verify", { jobId: secretId })).status === 400);
+
+  // Taking a job back out: only its owner can, and it goes completely.
+  const spare = await apiAs(a.token, "studio", { action: "importJob", title: "Cook", company: `Spare-${stamp}`, description: POSTING_TEXT });
+  const spareId = spare.json?.jobId;
+  ok("someone else cannot remove it", (await apiAs(b.token, "studio", { action: "removeJob", jobId: spareId })).status === 404);
+  const { data: spareStill } = await admin.from("jobs").select("id").eq("id", spareId);
+  ok("and it is still there afterwards", spareStill?.length === 1);
+  ok("a job from the shared list cannot be removed this way", (await apiAs(a.token, "studio", { action: "removeJob", jobId: "no-such-shared-job" })).status === 404);
+  ok("the owner can remove it", (await apiAs(a.token, "studio", { action: "removeJob", jobId: spareId })).status === 200);
+  const { data: spareGone } = await admin.from("jobs").select("id").eq("id", spareId);
+  const { data: spareMatch } = await admin.from("job_matches").select("job_id").eq("job_id", spareId);
+  ok("it is gone, along with its score row", (spareGone?.length ?? 0) === 0 && (spareMatch?.length ?? 0) === 0);
+
+  // Nobody can plant, change or delete a job through the browser's own connection.
+  const plant = await b.client.from("jobs").insert({ id: `mine:${stamp}-plant`, source: "imported", external_id: "x", title: "Planted", company: "Planted", owner_id: a.id });
+  ok("a browser cannot plant a job in someone else's name", !!plant.error, plant.error?.message?.slice(0, 50));
+  await a.client.from("jobs").update({ title: "TAMPERED" }).eq("id", secretId);
+  const { data: stillTitled } = await admin.from("jobs").select("title").eq("id", secretId).single();
+  ok("a browser cannot edit even its own job's saved text", stillTitled.title === "Operations Coordinator", `title is "${stillTitled.title}"`);
+
+  // What the form accepts.
+  ok("a too short description is refused", (await apiAs(a.token, "studio", { action: "importJob", title: "Cook", company: "Diner", description: "Cook wanted." })).status === 400);
+  ok("a missing title is refused", (await apiAs(a.token, "studio", { action: "importJob", title: "", company: "Diner", description: POSTING_TEXT })).status === 400);
+  ok("a script link is refused", (await apiAs(a.token, "studio", { action: "importJob", title: "Cook", company: "Diner", url: "javascript:alert(1)", description: POSTING_TEXT })).status === 400);
+  ok("a link that is not a link is refused", (await apiAs(a.token, "studio", { action: "importJob", title: "Cook", company: "Diner", url: "not a link", description: POSTING_TEXT })).status === 400);
+  ok("no token is refused", (await apiAs(null, "studio", { action: "importJob", title: "Cook", company: "Diner", description: POSTING_TEXT })).status === 401);
+
+  // Staff see the shared cache, not what individuals pasted in.
+  const staff = await makeUser("staff");
+  await admin.from("profiles").update({ is_admin: true }).eq("id", staff.id);
+  const cache = await apiAs(staff.token, "admin", { action: "jobs", q: MARK });
+  ok("the admin job cache leaves out jobs people added", cache.status === 200 && cache.json?.total === 0, `${cache.json?.total} match`);
+
+  // A person who added jobs and tracked them must still be deletable, by the person and by staff.
+  const leaver = await makeUser("leaver");
+  const gone = await apiAs(leaver.token, "studio", { action: "importJob", title: "Cook", company: "Diner", description: POSTING_TEXT });
+  await admin.from("applications").insert({ user_id: leaver.id, job_id: gone.json.jobId, status: "applied" });
+  const del = await apiAs(leaver.token, "account/delete", { confirm: "DELETE" });
+  const { count: left } = await admin.from("jobs").select("*", { count: "exact", head: true }).eq("id", gone.json.jobId);
+  ok("deleting an account with added jobs and applications works", del.status === 200 && left === 0, `status ${del.status}, ${left} job(s) left`);
+
+  const target = await makeUser("target");
+  const theirs = await apiAs(target.token, "studio", { action: "importJob", title: "Cook", company: "Diner", description: POSTING_TEXT });
+  await admin.from("applications").insert({ user_id: target.id, job_id: theirs.json.jobId, status: "offer" });
+  const staffDel = await apiAs(staff.token, "admin", { action: "deleteUser", userId: target.id, confirm: "DELETE" });
+  const { count: left2 } = await admin.from("jobs").select("*", { count: "exact", head: true }).eq("id", theirs.json.jobId);
+  ok("staff can delete an account that added jobs and tracked them", staffDel.status === 200 && left2 === 0, `status ${staffDel.status}, ${left2} job(s) left`);
+
   console.log("\n[10] A's own data survives a fresh sign in");
   // Sign A in again from scratch, the way a returning visit works, and read
   // back the records the tracker depends on.

@@ -4,6 +4,7 @@ import { seedState, useStore, type AppState } from "@/store/AppStore";
 import { restoreDemoJobs, setLiveJobs } from "@/data/jobs";
 import { emptyResume, restoreDemoResume, setBaseResume, type Resume } from "@/data/user";
 import { INTENSITY_META } from "@/data/plan";
+import { normalizeApplications } from "@/lib/tracker";
 import { DEFAULT_RESUME_TEMPLATE } from "@/data/resumeTemplates";
 import { DEFAULT_LETTER_TEMPLATE } from "@/data/letterTemplates";
 import { LIVE_AVAILABLE, supabase } from "./supabase";
@@ -119,6 +120,8 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       const base = emptyLiveState(name, u.email ?? profile?.email ?? "");
       const savedState = (saved?.state ?? {}) as Partial<AppState>;
       const s: AppState = { ...base, ...savedState, mode: "live", authed: true, v: base.v };
+      // Older saved state used one "closed" column. Sort those into rejected or withdrawn.
+      s.applications = normalizeApplications(s.applications ?? []);
 
       setIsAdmin(!!profile?.is_admin);
       // Distance is per person, so the listings are measured against this.

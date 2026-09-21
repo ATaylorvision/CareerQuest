@@ -1,38 +1,51 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, BadgeCheck, CircleDot, GripVertical, Lock, MessagesSquare, MoreHorizontal, Receipt as ReceiptIcon, Send, Trash2, Users } from "lucide-react";
-import { Card, CompanyLogo, PageHeader, ScoreRing } from "@/components/common";
+import { ArrowRight, ClipboardPaste, FileText, GripVertical, Lock, MessagesSquare, MoreHorizontal, Receipt as ReceiptIcon, Send, Trash2, Users } from "lucide-react";
+import { CompanyLogo, PageHeader } from "@/components/common";
 import { MethodBadge, Pill, VerifiedMark } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useStore } from "@/store/AppStore";
-import { saveApplicationStatus } from "@/live/persist";
+import { removeApplication, saveApplication } from "@/live/persist";
+import { api } from "@/live/api";
+import { useLive } from "@/live/LiveProvider";
+import { StatusSummary } from "@/components/tracker/StatusSummary";
+import { ImportJobDialog } from "@/components/ImportJobDialog";
 import { COLUMNS, EVENT_META, type Application, type Column, type EventType } from "@/data/applications";
 import { jobById } from "@/data/jobs";
-import { proofScore } from "@/lib/selectors";
+import { trackerStats } from "@/lib/tracker";
 import { relFromIso } from "@/lib/date";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { cn } from "@/lib/utils";
 
-const COLUMN_EVENT: Partial<Record<Column, EventType>> = { screening: "screen", interview: "interview", offer: "offer", closed: "rejected" };
+const COLUMN_EVENT: Partial<Record<Column, EventType>> = { screening: "screen", interview: "interview", offer: "offer", rejected: "rejected", withdrawn: "noresponse" };
 
 export function useMoveApp() {
   const { state, update } = useStore();
   return (app: Application, to: Column, note?: string) => {
     if (app.column === to) return;
-    if (to !== "saved" && !app.receipt?.submittedAt && app.column === "saved") {
-      toast("Apply first", { description: "Cards move past Saved once there is a receipt. Open the job to apply." });
-      return false;
+    const at = new Date().toISOString();
+    const label = COLUMNS.find((c) => c.id === to)!.label;
+    const next: Application = { ...app, column: to, events: [...app.events] };
+
+    // Someone moving a saved card forward has applied somewhere we were not part of.
+    // We record that they said so, as a manual application, and claim nothing more.
+    if (!app.receipt && to !== "saved") {
+      next.receipt = { method: "manual", destination: "company", destinationLabel: "Applied outside CareerQuest", submittedAt: at, resumeVersionId: "", coverLetter: "", fields: [], confirmation: { verified: false } };
+      next.events.push({ id: `e${Date.now()}s`, type: "submitted", at, note: "You marked this as applied." });
     }
+    const ev = COLUMN_EVENT[to];
+    if (ev) next.events.push({ id: `e${Date.now()}`, type: ev, at, note: note ?? `You moved this to ${label}.` });
+    // Advice written for the old column ("Tailor your resume, closes Friday") is wrong once it has moved.
+    next.nextStep = to === "applied" ? "Most employers respond within 7 to 10 business days." : to === "saved" ? app.nextStep : undefined;
+
     update((s) => {
-      const a = s.applications.find((x) => x.id === app.id)!;
-      a.column = to;
-      const ev = COLUMN_EVENT[to];
-      if (ev) a.events.push({ id: `e${Date.now()}`, type: ev, at: new Date().toISOString(), note: note ?? `You moved this to ${COLUMNS.find((c) => c.id === to)!.label}.` });
+      const i = s.applications.findIndex((x) => x.id === app.id);
+      if (i >= 0) s.applications[i] = next;
     });
-    if (state.mode === "live") void saveApplicationStatus(app.jobId, to);
-    toast.success(`Moved to ${COLUMNS.find((c) => c.id === to)!.label}`, { description: jobById(app.jobId)!.title });
+    if (state.mode === "live") void saveApplication(next);
+    toast.success(`Moved to ${label}`, { description: jobById(app.jobId)?.title });
     return true;
   };
 }
@@ -40,8 +53,29 @@ export function useMoveApp() {
 function AppCard({ app, onDragStart, dragging }: { app: Application; onDragStart: (id: string) => void; dragging: boolean }) {
   const job = jobById(app.jobId)!;
   const move = useMoveApp();
-  const { update } = useStore();
+  const { state, update } = useStore();
+  const { reloadJobs } = useLive();
   const nav = useNavigate();
+
+  // Something the person added themselves can be taken back out completely. What
+  // CareerQuest sent for them is a record, so it stays.
+  const removeCard = async () => {
+    update((s) => void (s.applications = s.applications.filter((x) => x.id !== app.id)));
+    if (state.mode === "live") {
+      if (job.imported) {
+        try {
+          await api("studio", { action: "removeJob", jobId: job.id });
+          await reloadJobs();
+        } catch {
+          toast.error("We could not remove that everywhere", { description: "It is gone from your board. Please try again if it comes back." });
+          return;
+        }
+      } else {
+        void removeApplication(job.id);
+      }
+    }
+    toast("Removed from tracker");
+  };
   const last = [...app.events].filter((e) => !e.future).pop()!;
   const next = app.events.find((e) => e.future);
   return (
@@ -79,6 +113,10 @@ function AppCard({ app, onDragStart, dragging }: { app: Application; onDragStart
           <Link to={`/app/receipts/${app.id}`} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
             <ReceiptIcon className="h-3.5 w-3.5" /> Receipt
           </Link>
+        ) : job.imported ? (
+          <Link to={`/app/studio?job=${encodeURIComponent(job.id)}`} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+            <FileText className="h-3.5 w-3.5" /> Tailor resume
+          </Link>
         ) : (
           <Link to={`/app/jobs/${job.id}?apply=1`} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
             <Send className="h-3.5 w-3.5" /> Apply
@@ -99,14 +137,8 @@ function AppCard({ app, onDragStart, dragging }: { app: Application; onDragStart
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => nav(`/app/jobs/${job.id}`)}>Open job</DropdownMenuItem>
-            {!app.receipt && (
-              <DropdownMenuItem
-                className="text-danger"
-                onSelect={() => {
-                  update((s) => void (s.applications = s.applications.filter((x) => x.id !== app.id)));
-                  toast("Removed from tracker");
-                }}
-              >
+            {(!app.receipt || job.imported) && (
+              <DropdownMenuItem className="text-danger" onSelect={() => void removeCard()}>
                 <Trash2 className="mr-2 h-4 w-4" /> Remove
               </DropdownMenuItem>
             )}
@@ -123,7 +155,8 @@ export default function Tracker() {
   const move = useMoveApp();
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<Column | null>(null);
-  const proof = proofScore(state.applications);
+  const stats = trackerStats(state.applications);
+  const [importOpen, setImportOpen] = useState(false);
   // Interview prep and Insider Connections belong to an application in flight,
   // so they live here rather than as their own places to remember to visit.
   const talking = state.applications.filter((a) => a.column === "screening" || a.column === "interview");
@@ -140,66 +173,22 @@ export default function Tracker() {
     <div>
       <PageHeader
         title="Application Tracker"
-        sub="Every application, where it stands, and the receipt to prove it. Drag cards between columns, or use the menu on each card."
+        sub="Every application and where it stands. Drag cards between columns, or use the menu on each card."
         actions={
-          <Button asChild variant="outline">
-            <Link to="/app/matches">
-              Find more roles <ArrowRight />
-            </Link>
-          </Button>
+          <>
+            <Button onClick={() => setImportOpen(true)}>
+              <ClipboardPaste /> Add a job
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/app/matches">
+                Find more roles <ArrowRight />
+              </Link>
+            </Button>
+          </>
         }
       />
 
-      {/* Proof Score */}
-      <Card className="mb-6">
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-center">
-          <div className="flex items-center gap-4">
-            <ScoreRing value={proof.pct} size={92} stroke={8} tone="success" sub="verified" label="Proof Score" />
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold">
-                <BadgeCheck className="h-5 w-5 text-success" /> Proof Score
-              </h2>
-              <p className="max-w-xs text-sm text-muted-foreground">
-                <span className="num font-semibold text-foreground">{proof.verified}</span> of <span className="num font-semibold text-foreground">{proof.total}</span> submitted applications have a verified confirmation.
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { m: "submitted" as const, n: proof.byMethod.submitted, l: "Submitted by CareerQuest" },
-              { m: "prefilled" as const, n: proof.byMethod.prefilled, l: "Prefilled, you submitted" },
-              { m: "manual" as const, n: proof.byMethod.manual, l: "Manual required" },
-            ].map((x) => (
-              <div key={x.m} className={cn("rounded-lg border p-3", x.m === "submitted" ? "border-success-border bg-success-soft/50" : x.m === "prefilled" ? "border-info-border bg-info-soft/50" : "border-warning-border bg-warning-soft/50")}>
-                <div className="num text-2xl font-semibold">{x.n}</div>
-                <div className={cn("mt-0.5 text-xs font-medium leading-snug", x.m === "submitted" ? "text-success" : x.m === "prefilled" ? "text-info" : "text-warning")}>{x.l}</div>
-              </div>
-            ))}
-          </div>
-          <div className="lg:col-span-2">
-            {proof.unverified.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-warning-border bg-warning-soft px-4 py-3 text-sm">
-                <div className="flex items-center gap-1.5 font-semibold text-warning">
-                  <CircleDot className="h-4 w-4" /> {proof.unverified.length} not verified yet
-                </div>
-                <ul className="flex flex-wrap gap-x-4 gap-y-1">
-                  {proof.unverified.map((a) => (
-                    <li key={a.id}>
-                      <Link to={`/app/receipts/${a.id}`} className="font-medium text-foreground/85 underline underline-offset-2 hover:text-foreground">
-                        {jobById(a.jobId)!.company.name}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-                <span className="text-xs text-muted-foreground">Add a confirmation email or screenshot on the receipt to verify.</span>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-success-border bg-success-soft p-3 text-sm text-success">Every application is verified.</div>
-            )}
-          </div>
-        </div>
-        <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">We never label anything "auto-applied." Each card shows exactly how it was sent. Honesty is the feature.</p>
-      </Card>
+      <StatusSummary stats={stats} onAdd={() => setImportOpen(true)} />
 
       {/* What to do next with the applications that are moving */}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -275,6 +264,7 @@ export default function Tracker() {
         </div>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">Scroll sideways to see every column. On a phone or with a keyboard, use the menu on each card to move it.</p>
+      <ImportJobDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

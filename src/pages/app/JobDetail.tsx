@@ -306,6 +306,14 @@ export default function JobDetail() {
             <Button asChild>
               <Link to={`/app/receipts/${app!.id}`}><FileText /> View receipt</Link>
             </Button>
+          ) : job.imported ? (
+            job.applyUrl ? (
+              <Button asChild>
+                <a href={job.applyUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink /> Open the posting
+                </a>
+              </Button>
+            ) : null
           ) : (
             <Button onClick={() => setApply(true)}>
               <Send /> Apply
@@ -408,8 +416,9 @@ export default function JobDetail() {
         </div>
 
         <div className="space-y-6">
-          <WhyThisScore job={job} />
+          {!job.imported && <WhyThisScore job={job} />}
 
+          {!job.imported && (
           <Card>
             <SectionTitle sub="How this application would be sent, stated plainly.">Apply path</SectionTitle>
             <MethodBadge method={job.applyMethod === "auto" ? "submitted" : job.applyMethod === "prefill" ? "prefilled" : "manual"} />
@@ -424,6 +433,7 @@ export default function JobDetail() {
               <Button className="mt-4 w-full" onClick={() => setApply(true)}><Send /> Start application</Button>
             )}
           </Card>
+          )}
 
           {people.length > 0 && (
             <Card>

@@ -70,7 +70,7 @@ async function overview(days: number) {
     db.from("profiles").select("*", head).gte("created_at", weekAgo),
     db.from("profiles").select("*", head).not("onboarded_at", "is", null),
     db.from("profiles").select("*", head).in("plan_tier", ["pro", "trial"]),
-    db.from("jobs").select("*", head),
+    db.from("jobs").select("*", head).is("owner_id", null),
     db.from("job_matches").select("*", head),
     db.from("applications").select("*", head),
     db.from("applications").select("*", head).gte("created_at", weekAgo),
@@ -157,6 +157,7 @@ async function listJobs(q: string, page: number) {
       "id, source, title, company, location, remote_type, salary_min, salary_max, apply_url, employer_posted, posted_at, first_seen_at, repost_count, ats_provider, company_site_status, legit",
       { count: "exact" },
     )
+    .is("owner_id", null)
     .order("first_seen_at", { ascending: false })
     .range(page * PAGE, page * PAGE + PAGE - 1);
   if (q) query = query.or(`title.ilike.%${q}%,company.ilike.%${q}%`);
@@ -335,6 +336,8 @@ async function deleteUser(actor: AdminUser, userId: string, confirm: string) {
     const { data } = await db.storage.from(bucket).list(userId, { limit: 1000 });
     if (data?.length) await db.storage.from(bucket).remove(data.map((f) => `${userId}/${f.name}`));
   }
+  await db.from("applications").delete().eq("user_id", userId);
+  await db.from("jobs").delete().eq("owner_id", userId);
   const { error } = await db.auth.admin.deleteUser(userId);
   if (error) throw new HttpError(500, "We could not delete that account. Please try again.");
   await logAction(actor, "account.delete", { id: userId, label: (before?.email as string) ?? userId });

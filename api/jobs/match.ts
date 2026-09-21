@@ -163,7 +163,8 @@ export default route(async (req, _res, user) => {
   const [{ data: resumeRow }, { data: profile }, { data: jobs }, { data: existing }] = await Promise.all([
     db.from("resumes").select("parsed").eq("user_id", user.id).eq("is_base", true).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     db.from("profiles").select("situation, prev_field, target_field").eq("id", user.id).single(),
-    db.from("jobs").select("id, title, company, location, description, salary_min, salary_max").in("id", ids),
+    // Jobs someone pasted in are private to them, so anyone else asking for one gets nothing back.
+    db.from("jobs").select("id, title, company, location, description, salary_min, salary_max").in("id", ids).or(`owner_id.is.null,owner_id.eq.${user.id}`),
     db.from("job_matches").select("job_id, breakdown, why, gaps, translator, career_changer_friendly, score").eq("user_id", user.id).in("job_id", ids),
   ]);
   if (!resumeRow?.parsed) throw new HttpError(400, "Upload your resume first so we can match against it.");

@@ -14,14 +14,16 @@ interface Overview {
   days: number;
 }
 
-const STATUS_ORDER = ["saved", "applied", "screening", "interview", "offer", "closed"];
+const STATUS_ORDER = ["saved", "applied", "screening", "interview", "offer", "rejected", "withdrawn", "closed"];
 const STATUS_LABEL: Record<string, string> = {
   saved: "Saved",
   applied: "Applied",
   screening: "Screening",
   interview: "Interview",
   offer: "Offer",
-  closed: "Closed",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+  closed: "Closed (older)",
 };
 
 export default function AdminOverview() {
@@ -115,7 +117,7 @@ export default function AdminOverview() {
                             {n} · {Math.round((n / statusTotal) * 100)}%
                           </span>
                         </div>
-                        <ScoreBar value={n} max={statusTotal} height={6} tone={s === "offer" ? "success" : s === "closed" ? "muted" : "primary"} label={`${STATUS_LABEL[s] ?? s}: ${n}`} />
+                        <ScoreBar value={n} max={statusTotal} height={6} tone={s === "offer" ? "success" : s === "closed" || s === "withdrawn" || s === "rejected" ? "muted" : "primary"} label={`${STATUS_LABEL[s] ?? s}: ${n}`} />
                       </li>
                     );
                   })}

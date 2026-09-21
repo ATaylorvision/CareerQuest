@@ -23,6 +23,7 @@ node scripts/e2e-backend.mjs   # full backend test with a throwaway account (dev
 node scripts/e2e-admin.mjs     # tests the admin panel API, including that a normal account is refused
 node scripts/e2e-studio.mjs    # tests tailoring, cover letters and interview prep against a real cached job
 npm run test:ats               # the ATS scorer and keyword tools, no network needed
+npm run test:tracker           # the tracker's counts and follow up rules, no network needed
 npm run security               # two accounts, then tries every way one could read or change the other
 ```
 
@@ -42,6 +43,8 @@ npm run security               # two accounts, then tries every way one could re
 | Dashboard | One screen to run the search. Streak on top, then counts, today's plan, the six week chart, and next week's target. A profile question a day sharpens matching, and the resume downloads straight from here. |
 | ATS score | Measured from the resume itself in `src/lib/ats.ts`, out of 100: keyword coverage 35, line quality 25, structure 20, length 10, sections 10. It follows every keystroke and lists what to fix, ranked by points recovered. It is labelled an estimate, since we are not running anyone's real screening system. With no posting to compare against it scores the other four parts out of 100. |
 | Keyword panel | The terms a posting asks for, sorted into on your resume, you may have this, and not found. A model reads each posting once and the answer is saved on the job; every term must appear in the posting and is shown in the posting's own words. Clicking a term we could not find asks "Have you done this?", and it only goes on the resume in the person's own words. |
+| Add a job | `src/components/ImportJobDialog.tsx`, `importJob` in `api/studio.ts`. Someone pastes a posting they found or already applied to (link optional, never fetched), and it lands in the Tracker or opens in the Studio. It is stored as a private job (`jobs.owner_id`, id `mine:<uuid>`): visible only to its owner by row level security and by 404 checks on every endpoint, left out of matches and the admin job cache, and removable from the tracker card. Applications moved forward from Saved are recorded as manual, with nothing claimed about a receipt. |
+| Tracker | Columns: Saved, Applied, Screening, Interview, Offer, Rejected, Withdrawn. The summary on top (`src/lib/tracker.ts`) counts how far each application got, the share that heard back, interviewed or received an offer, and lists ones with no answer after 14 days. |
 | Templates | Five resume layouts and five cover letter layouts in `src/data/resumeTemplates.ts` and `letterTemplates.ts`. Each thumbnail is the real template rendered with the user's own content. All are one page, black and white, and made of selectable text so an ATS can read them. |
 | Commute radius | Search starts from the home base and passes the person's own radius to the job board. Onsite and hybrid listings out of range are dropped, by coordinates where both ends have them (`api/_lib/geo.ts`). There is no nationwide fallback. |
 | Add ons | Insider Connections is bought separately from any plan (`billing.addOns`, written by the server only). |
