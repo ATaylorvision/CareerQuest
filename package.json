@@ -16,7 +16,8 @@
     "security": "node scripts/security-check.mjs",
     "test:ats": "tsx scripts/test-ats.ts",
     "test:tracker": "tsx scripts/test-tracker.ts",
-    "test:stripe": "tsx scripts/test-stripe.ts"
+    "test:stripe": "tsx scripts/test-stripe.ts",
+    "test:agent": "tsx scripts/test-agent.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

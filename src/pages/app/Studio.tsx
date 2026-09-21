@@ -12,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { ResumeDocument } from "@/components/studio/ResumeDocument";
 import { ChangeCard, GapsPanel, TranslatorPanel, VersionsPanel } from "@/components/studio/panels";
 import { AtsScorePanel, KeywordPanel } from "@/components/studio/AtsPanels";
+import { WrenPanel } from "@/components/studio/WrenPanel";
 import { TemplatePicker } from "@/components/TemplatePicker";
 import { ImportJobDialog } from "@/components/ImportJobDialog";
 import { useStore } from "@/store/AppStore";
@@ -30,13 +31,39 @@ import CoverLetter from "./CoverLetter";
 
 type Doc = "resume" | "letter";
 
+/** A brand new account can open the Studio before any job has been found. There is nothing to tailor yet, so say what to do. */
 export default function Studio() {
   useDocTitle("Studio");
+  const { state } = useStore();
+  const [params, setParams] = useSearchParams();
+  const [importOpen, setImportOpen] = useState(false);
+  const job = jobById(params.get("job") ?? state.resume.jobId) ?? JOBS[0];
+  if (job) return <StudioFor job={job} />;
+  return (
+    <div>
+      <PageHeader title="Studio" sub="Your resume and cover letter for one job, on one page." />
+      <Card className="mx-auto max-w-xl text-center">
+        <ClipboardPaste className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden />
+        <h2 className="mt-3 font-display text-xl font-semibold">Pick a job to work on</h2>
+        <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">The Studio tailors your resume to one specific posting. Paste one you found, or look through your matches and open one.</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <Button onClick={() => setImportOpen(true)}>
+            <ClipboardPaste /> Add a job
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/app/matches">See your matches</Link>
+          </Button>
+        </div>
+      </Card>
+      <ImportJobDialog open={importOpen} onOpenChange={setImportOpen} onAdded={(id) => setParams({ job: id })} />
+    </div>
+  );
+}
+
+function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
   const { state, update } = useStore();
   const [params, setParams] = useSearchParams();
   const pro = isPro(state);
-  const jobId = params.get("job") ?? state.resume.jobId;
-  const job = jobById(jobId) ?? JOBS[0];
   const live = state.mode === "live";
 
   const [doc, setDoc] = useSessionState<Doc>("studio-doc", "resume");
@@ -148,16 +175,47 @@ export default function Studio() {
 
   // Lines and skills the person confirmed with "Have you done this?". They go in
   // exactly as written, and land on the page ready to be edited.
-  const addLine = (roleId: string, text: string) => {
-    const id = `add-${Date.now().toString(36)}`;
+  const addLine = (roleId: string, text: string, quiet = false) => {
+    const id = `add-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
     update((s) => {
       if (!s.resume.added) s.resume.added = {};
       if (!s.resume.added[job.id]) s.resume.added[job.id] = {};
       (s.resume.added[job.id][roleId] ??= []).push({ id, text });
     });
-    toast.success("Added to your resume", { description: "It is your own wording. Edit it on the page if you like." });
+    if (!quiet) toast.success("Added to your resume", { description: "It is your own wording. Edit it on the page if you like." });
     setTimeout(() => jumpTo(id), 60);
+    return id;
   };
+  const removeAdded = (roleId: string, id: string) =>
+    update((s) => {
+      const list = s.resume.added?.[job.id]?.[roleId];
+      if (list) s.resume.added![job.id][roleId] = list.filter((a) => a.id !== id);
+      if (s.resume.edits?.[job.id]) delete s.resume.edits[job.id][id];
+    });
+  const clearField = (fieldId: string) =>
+    update((s) => {
+      if (s.resume.edits?.[job.id]) delete s.resume.edits[job.id][fieldId];
+    });
+
+  // What Wren edits. Each function hands back the way to undo it.
+  const wrenReplace = (field: string, text: string) => {
+    const prev = edits[field];
+    editField(field, field === "skills" ? text.split(/,\s*(?![^()]*\))/).map((x) => x.trim()).filter(Boolean).join(", ") : text);
+    setTimeout(() => jumpTo(field), 60);
+    return () => (prev === undefined ? clearField(field) : editField(field, prev));
+  };
+  const wrenAdd = (roleId: string, text: string) => {
+    const id = addLine(roleId, text, true);
+    return () => removeAdded(roleId, id);
+  };
+  const snapshot = useMemo(
+    () => ({
+      summary: built.summary,
+      skills: built.skills,
+      roles: built.roles.map((r) => ({ id: r.id, title: r.title, company: r.company, bullets: r.bullets.map((b) => ({ id: b.id, text: b.text })) })),
+    }),
+    [built],
+  );
   const addSkill = (term: string) => {
     editField("skills", [...built.skills, term].join(", "));
     toast.success(`Added "${term}" to your skills`);
@@ -439,6 +497,15 @@ export default function Studio() {
                 onClearPaste={() => setPosting(null)}
               />
             </Card>
+
+            {live && (
+              <Card className="p-4">
+                <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
+                  <Sparkles className="h-4 w-4 text-primary" aria-hidden /> Wren, your resume editor
+                </h2>
+                <WrenPanel key={job.id} jobId={job.id} snapshot={snapshot} onReplace={wrenReplace} onAdd={wrenAdd} />
+              </Card>
+            )}
 
             <Card className="p-0 sm:p-0">
               <Accordion type="single" collapsible defaultValue="tailor">

@@ -169,6 +169,8 @@ try {
   for (const [what, path, body] of [
     ["tailoring against it", "studio", { action: "tailor", jobId: secretId }],
     ["reading its keywords", "studio", { action: "keywords", jobId: secretId }],
+    ["editing a resume against it with Wren", "studio", { action: "agent", jobId: secretId, message: "make my summary stronger please", resume: { summary: "Operations lead with several years running stores.", skills: [], roles: [{ id: "role-1", title: "Lead", company: "Co", bullets: [{ id: "b1", text: "Ran the store floor every day." }] }] } }],
+    ["writing a line for it", "studio", { action: "writeLine", jobId: secretId, target: "bullet", notes: "I ran the store floor every day", resume: { summary: "Operations lead with several years running stores.", skills: [], roles: [{ id: "role-1", title: "Lead", company: "Co", bullets: [{ id: "b1", text: "Ran the store floor every day." }] }] } }],
     ["writing a letter for it", "studio", { action: "letter", jobId: secretId, tone: "warm" }],
     ["preparing interview questions for it", "studio", { action: "questions", jobId: secretId }],
     ["scoring it", "jobs/match", { ids: [secretId], mode: "score" }],

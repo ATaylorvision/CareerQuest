@@ -147,6 +147,43 @@ try {
   ok("the same terms come back", JSON.stringify(k2.json?.must) === JSON.stringify(k1.json?.must) || k1.json?.source === "basic");
   ok("an unknown job is a 404, not a crash", (await call(token, { action: "keywords", jobId: "nope:0" })).status === 404);
 
+  console.log("\n[5c] Wren edits the resume");
+  const PAGE = {
+    summary: RESUME.summary,
+    skills: RESUME.skills,
+    roles: RESUME.roles.map((r) => ({ id: r.id, title: r.title, company: r.company, bullets: r.bullets })),
+  };
+  const lineIds = new Set(RESUME.roles.flatMap((r) => r.bullets.map((b) => b.id)));
+  const a1 = await call(token, { action: "agent", jobId: job.id, message: "Make my summary fit this job and strengthen my weakest line.", history: [], resume: PAGE });
+  ok("Wren answers with a reply and proposals", a1.status === 200 && typeof a1.json?.reply === "string" && Array.isArray(a1.json?.proposals), `${a1.json?.proposals?.length} proposal(s)`);
+  ok("every proposal points at something on the page", (a1.json?.proposals ?? []).every((p) => (p.kind === "replace" && (p.field === "summary" || p.field === "skills" || lineIds.has(p.field))) || (p.kind === "add" && RESUME.roles.some((r) => r.id === p.roleId))));
+  ok("each proposal carries what it replaces", (a1.json?.proposals ?? []).filter((p) => p.kind === "replace").every((p) => p.before && p.before !== p.after));
+  const pageText = JSON.stringify(PAGE);
+  const badNums = (a1.json?.proposals ?? []).flatMap((p) => (p.after.match(/\d+(?:\.\d+)?/g) ?? []).filter((n) => !pageText.includes(n)));
+  ok("no number appears that is not already on the resume", badNums.length === 0, badNums.length ? `invented: ${badNums.join(", ")}` : "none invented");
+
+  const MSG2 = "Say that I managed a team of 400 people and ran a $50M budget.";
+  const a2 = await call(token, { action: "agent", jobId: job.id, message: MSG2, history: [], resume: PAGE });
+  const nums2 = (a2.json?.proposals ?? []).flatMap((p) => p.after.match(/\d+(?:\.\d+)?/g) ?? []).filter((n) => !`${pageText} ${MSG2}`.includes(n));
+  ok("numbers the person gives are allowed, and nothing else is added", a2.status === 200 && nums2.length === 0, nums2.length ? `invented: ${nums2.join(", ")}` : `${a2.json?.proposals?.length} proposal(s)`);
+  const MSG3 = "Tighten the summary. Also add that I know SAP.";
+  const a3 = await call(token, { action: "agent", jobId: job.id, message: MSG3, history: [], resume: PAGE });
+  const known = `${RESUME.skills.join(" ")} ${MSG3}`.toLowerCase();
+  const foreign = (a3.json?.proposals ?? []).filter((p) => p.field === "skills").flatMap((p) => p.after.split(",").map((x) => x.trim())).filter((x) => x && !known.includes(x.toLowerCase()));
+  ok("a skill is only added because the person said so", a3.status === 200 && foreign.length === 0, foreign.length ? `not theirs: ${foreign.join(", ")}` : "every skill is theirs");
+  const a4 = await call(token, { action: "agent", jobId: job.id, message: "Add a line about my award for top performer.", history: [], resume: PAGE });
+  const digits4 = (a4.json?.proposals ?? []).filter((p) => p.kind === "add" && /\d/.test(p.after));
+  ok("a vague fact does not grow numbers or dates it never had", a4.status === 200 && digits4.length === 0);
+  ok("a message that is too short is refused", (await call(token, { action: "agent", jobId: job.id, message: "a", history: [], resume: PAGE })).status === 400);
+  ok("no resume on the page is refused", (await call(token, { action: "agent", jobId: job.id, message: "make it better please", history: [], resume: null })).status === 400);
+  ok("an unknown job is a 404", (await call(token, { action: "agent", jobId: "nope:0", message: "make it better please", history: [], resume: PAGE })).status === 404);
+  ok("no token is refused", (await fetch(`${BASE}/api/studio`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "agent" }) })).status === 401);
+
+  const w1 = await call(token, { action: "writeLine", jobId: job.id, target: "bullet", notes: "I trained about 6 new hires on the receiving dock and cut the mistakes", resume: PAGE });
+  ok("Write a line returns options built on the notes", w1.status === 200 && (w1.json?.options?.length ?? 0) >= 1, `${w1.json?.options?.length} option(s)`);
+  ok("options carry only numbers the person gave", (w1.json?.options ?? []).every((o) => (o.match(/\d+/g) ?? []).every((n) => `${pageText} I trained about 6 new hires`.includes(n))));
+  ok("notes that are too thin are refused", (await call(token, { action: "writeLine", jobId: job.id, target: "bullet", notes: "did stuff", resume: PAGE })).status === 400);
+
   console.log("\n[6] Free plan metering");
   const spend = [];
   for (let i = 0; i < 3; i++) spend.push((await call(token, { action: "letter", jobId: job.id, tone: "direct", addressGaps: [] })).status);
