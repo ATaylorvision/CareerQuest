@@ -1,12 +1,77 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Eye, EyeOff, Loader2, Minus, Plus, RotateCcw, Scissors, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Eye, EyeOff, Loader2, Minus, Plus, RotateCcw, Scissors, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Page, type PickerItem } from "@/components/TemplatePicker";
 import { clampSize, DEFAULT_FORMAT, FONTS, MARGINS, MAX_SIZE, MIN_SIZE, PAGE_H, PAGE_W, SPACINGS, type ResumeFormat } from "@/lib/resumeFormat";
 import type { CutSuggestion, PageFit } from "@/lib/fit";
 import { cn } from "@/lib/utils";
 
 const DEFAULT = "default";
+
+/** A compact template picker: a small dropdown that shows a live preview of whichever layout you point at, instead of a grid of large thumbnails taking over the page. */
+function TemplateField({ items, value, onChange }: { items: PickerItem[]; value: string; onChange: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const current = items.find((i) => i.id === value) ?? items[0];
+  const shown = items.find((i) => i.id === hoverId) ?? current;
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setHoverId(null);
+      }}
+    >
+      <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Template
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="flex h-9 w-[150px] items-center justify-between rounded-md border bg-background px-3 text-sm font-normal normal-case tracking-normal text-foreground hover:bg-accent/40"
+          >
+            <span className="truncate">{current?.name}</span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          </button>
+        </PopoverTrigger>
+      </label>
+      <PopoverContent align="start" className="flex w-[380px] gap-3 p-3" onMouseLeave={() => setHoverId(null)}>
+        <ul className="max-h-[300px] w-[130px] shrink-0 space-y-0.5 overflow-y-auto scrollbar-thin">
+          {items.map((t) => (
+            <li key={t.id}>
+              <button
+                type="button"
+                onMouseEnter={() => setHoverId(t.id)}
+                onFocus={() => setHoverId(t.id)}
+                onClick={() => {
+                  onChange(t.id);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                  t.id === value ? "bg-primary-soft font-medium text-primary" : "hover:bg-accent",
+                )}
+              >
+                {t.id === value ? <Check className="h-3 w-3 shrink-0" /> : <span className="w-3 shrink-0" />}
+                <span className="truncate">{t.name}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {shown && (
+          <div className="min-w-0 flex-1">
+            <div className="overflow-hidden rounded-md border bg-white">
+              <Page html={shown.html} />
+            </div>
+            <p className="mt-2 line-clamp-3 text-[11px] leading-snug text-muted-foreground">{shown.blurb}</p>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 interface Props {
   format: ResumeFormat;
@@ -25,6 +90,9 @@ interface Props {
   onRoom: () => void;
   /** The finished page as HTML, for the preview. */
   previewHtml: string;
+  templates: PickerItem[];
+  templateId: string;
+  onTemplateChange: (id: string) => void;
 }
 
 /** Fits the real page to the width available, so the preview is what will print. */
@@ -55,7 +123,7 @@ export function PagePreview({ html, pages }: { html: string; pages: number }) {
   );
 }
 
-export function FormatBar({ format, onChange, baseSize, lockedMargins, fit, allowedPages, onAuto, autoBusy, note, cuts, onCut, onRoom, previewHtml }: Props) {
+export function FormatBar({ format, onChange, baseSize, lockedMargins, fit, allowedPages, onAuto, autoBusy, note, cuts, onCut, onRoom, previewHtml, templates, templateId, onTemplateChange }: Props) {
   const [showPreview, setShowPreview] = useState(false);
   const size = format.size ?? baseSize;
   const set = (patch: Partial<ResumeFormat>) => onChange({ ...format, ...patch });
@@ -68,6 +136,8 @@ export function FormatBar({ format, onChange, baseSize, lockedMargins, fit, allo
   return (
     <div className="space-y-3 rounded-xl border bg-card p-3">
       <div className="flex flex-wrap items-end gap-3">
+        <TemplateField items={templates} value={templateId} onChange={onTemplateChange} />
+
         <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Font
           <Select value={format.font} onValueChange={(v) => set({ font: v })}>

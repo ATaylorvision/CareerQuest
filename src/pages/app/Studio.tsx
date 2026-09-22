@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { CheckCheck, ClipboardPaste, Download, FileDown, Languages, LayoutTemplate, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
+import { CheckCheck, ClipboardPaste, Download, FileDown, Languages, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
 import { AiWorking, Card, PageHeader, SkeletonLines } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,6 @@ import { autoAdjust, measureInFrame, suggestCuts, summarise, TWO_PAGE_AFTER_YEAR
 import { DEFAULT_FORMAT, type ResumeFormat } from "@/lib/resumeFormat";
 import type { LineSuggestion } from "@/components/studio/ResumeDocument";
 import { useSuggestions, type Suggestion } from "@/hooks/useSuggestions";
-import { TemplatePicker } from "@/components/TemplatePicker";
 import { ImportJobDialog } from "@/components/ImportJobDialog";
 import { useStore } from "@/store/AppStore";
 import { JOBS, jobById } from "@/data/jobs";
@@ -93,7 +92,6 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
   const [working, setWorking] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [showLayouts, setShowLayouts] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
@@ -270,6 +268,10 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
   const format = state.resume.format ?? DEFAULT_FORMAT;
   const setFormat = (f: ResumeFormat) => update((s) => void (s.resume.format = f));
   const tpl = resumeTemplate(state.resume.templateId);
+  const templateItems = useMemo(
+    () => RESUME_TEMPLATES.map((t) => ({ id: t.id, name: t.name, blurb: t.blurb, bestFor: t.bestFor, html: renderResumeHtml(built, t.id, t.name, state.profile.headline) })),
+    [built, state.profile.headline],
+  );
   const years = useMemo(() => yearsOfExperience(built.roles), [built.roles]);
   const allowedPages: 1 | 2 = years > TWO_PAGE_AFTER_YEARS ? 2 : 1;
   const pageHtml = (f: ResumeFormat) => renderResumeHtml(built, state.resume.templateId, "Resume", state.profile.headline, f, true);
@@ -505,9 +507,6 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
               <Button size="sm" variant="outline" disabled={working} onClick={() => (isAnalyzed ? (pending > 0 ? acceptAll() : undefined) : void startTailor())}>
                 <Sparkles /> {isAnalyzed ? (pending > 0 ? `Use all ${pending} suggestions` : "Suggestions reviewed") : "Auto improve"}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setShowLayouts((v) => !v)}>
-                <LayoutTemplate /> {showLayouts ? "Hide layouts" : "Template"}
-              </Button>
               {Object.keys(edits).length > 0 && (
                 <Button size="sm" variant="ghost" onClick={revertEdits}>
                   <RotateCcw /> Undo my edits
@@ -569,24 +568,10 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
                 toast("Tell Wren what else you have done, or use Write a line.");
               }}
               previewHtml={pageHtml(format)}
+              templates={templateItems}
+              templateId={state.resume.templateId}
+              onTemplateChange={(id) => update((d) => void (d.resume.templateId = id))}
             />
-
-            {showLayouts && (
-              <div className="card-base p-5">
-                <TemplatePicker
-                  label="Page layout"
-                  items={RESUME_TEMPLATES.map((t) => ({
-                    id: t.id,
-                    name: t.name,
-                    blurb: t.blurb,
-                    bestFor: t.bestFor,
-                    html: renderResumeHtml(built, t.id, t.name, state.profile.headline),
-                  }))}
-                  value={state.resume.templateId}
-                  onChange={(id) => update((d) => void (d.resume.templateId = id))}
-                />
-              </div>
-            )}
 
             <ResumeDocument
               r={built}

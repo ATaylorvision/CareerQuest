@@ -129,7 +129,7 @@ const PAGE_H = 1028;
  * A page at its real width, scaled to fit whatever box it is given. Used for
  * both the thumbnails and the large preview so neither one reflows.
  */
-function Page({ html }: { html: string }) {
+export function Page({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
