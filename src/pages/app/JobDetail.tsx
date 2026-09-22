@@ -30,7 +30,8 @@ import { LegitBadgeView, MethodBadge, Pill, TONE_CLASS } from "@/components/stat
 import { Button } from "@/components/ui/button";
 import { ApplyFlow } from "@/components/ApplyFlow";
 import { companySiteUrl } from "@/lib/companySite";
-import { useSaveJob } from "@/components/JobCard";
+import { useCheckFit, useSaveJob } from "@/components/JobCard";
+import { recordSignal } from "@/live/signals";
 import { TranslatorForBullets, topBulletsFor } from "@/components/TranslatorRows";
 import { jobById, LEGIT_META, MATCH_WEIGHTS, salaryMarket, salaryText, type Job } from "@/data/jobs";
 import { SEVERITY_LABEL } from "@/data/gaps";
@@ -249,6 +250,13 @@ export default function JobDetail() {
   const [apply, setApply] = useState(params.get("apply") === "1");
   useDocTitle(job ? `${job.title} at ${job.company.name}` : "Job not found");
   const enrich = useEnrich(job);
+  const { check, busy } = useCheckFit();
+
+  // Opening a listing is a sign of interest, and it is what lets us learn about jobs we did not call a match.
+  useEffect(() => {
+    if (job) void recordSignal(job, "open");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.id]);
 
   useEffect(() => {
     if (params.get("apply") === "1") setApply(true);
@@ -271,6 +279,17 @@ export default function JobDetail() {
       <button onClick={() => nav(-1)} className="mb-4 inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
+
+      {job.unscored && (
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary-soft/50 p-4 text-sm sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <b>We have not scored this job against your resume yet.</b> It is on the board because it is near you. Check your fit and we will show how it lines up, what you already cover, and what is missing.
+          </div>
+          <Button onClick={() => void check(job)} disabled={busy === job.id}>
+            {busy === job.id ? "Checking" : "Check my fit"}
+          </Button>
+        </div>
+      )}
 
       {hidden && (
         <div className="mb-4 flex gap-3 rounded-xl border border-danger-border bg-danger-soft p-4 text-sm">

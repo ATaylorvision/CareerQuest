@@ -98,7 +98,10 @@ export function companyFor(name: string, agency: boolean): Company {
 const NOT_AUTOMATED =
   "CareerQuest cannot submit to this employer's application system for you yet. Open the application on their page, and we will keep a record of what you sent so it shows up in your tracker and Proof Score.";
 
-export function rowToJob(row: JobRow, match: MatchRow): Job {
+/** What a listing looks like before it has been scored for anyone in particular. */
+export const NO_MATCH: MatchRow = { score: 0, breakdown: null, why: null, gaps: [], career_changer_friendly: false, dismissed: false, first_shown_at: null, distance_miles: null, kept: false, translator: null };
+
+export function rowToJob(row: JobRow, match: MatchRow, unscored = false): Job {
   const daysAgo = row.posted_at ? Math.max(0, Math.floor((Date.now() - new Date(row.posted_at).getTime()) / 86_400_000)) : 0;
   const t = match.translator ?? {};
   const desc = row.description ?? "";
@@ -147,6 +150,7 @@ export function rowToJob(row: JobRow, match: MatchRow): Job {
     distanceMiles: row.remote_type === "remote" ? null : (match.distance_miles ?? milesFromHome(row.latitude, row.longitude)),
     shownAt: match.first_shown_at ?? undefined,
     kept: !!match.kept,
+    unscored: unscored || undefined,
     // Marks jobs whose full analysis (translations, requirement checks, gaps) has not run yet.
     ...(t.enriched ? {} : { translations: undefined }),
   };

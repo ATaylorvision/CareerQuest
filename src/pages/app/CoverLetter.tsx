@@ -261,7 +261,7 @@ export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
     }
     update((s) => {
       s.letters.push({ id: `l${Date.now()}`, jobId: job.id, tone, text: letter, createdAt: new Date().toISOString() });
-      s.usage.coverLetters += 1;
+      if (s.mode !== "live") s.usage.coverLetters += 1;
     });
     toast.success("Cover letter saved", { description: `It will be attached when you apply to ${job.company.name}.` });
   };

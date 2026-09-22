@@ -1,6 +1,6 @@
 import { api } from "./api";
 import { requireSupabase } from "./supabase";
-import { rowToJob, type JobRow, type MatchRow } from "./mapJob";
+import { NO_MATCH, rowToJob, type JobRow, type MatchRow } from "./mapJob";
 import type { Job } from "@/data/jobs";
 
 export type Stage = "search" | "score" | "detail" | "done";
@@ -73,6 +73,16 @@ export async function loadJobs(): Promise<Job[]> {
   return (data ?? [])
     .filter((r) => r.jobs)
     .map((r) => rowToJob(r.jobs as unknown as JobRow, r as unknown as MatchRow));
+}
+
+/**
+ * Every listing in the shared cache that has no score for this person yet. This is what lets someone browse
+ * the whole board and find jobs we did not think to call a match. Their own imported jobs are never in it.
+ */
+export async function loadMoreJobs(exclude: Set<string>): Promise<Job[]> {
+  const { data, error } = await requireSupabase().from("jobs").select("*").is("owner_id", null).order("first_seen_at", { ascending: false }).limit(600);
+  if (error) throw new Error(error.message);
+  return (data ?? []).filter((r) => !exclude.has(r.id as string)).map((r) => rowToJob(r as unknown as JobRow, NO_MATCH, true));
 }
 
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));

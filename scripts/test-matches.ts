@@ -1,7 +1,7 @@
 // Tests for which listings appear on the Matches page and in what order. No network.
 // Run:  npm run test:matches
 import assert from "node:assert/strict";
-import { byShown, contextFor, dealbreakerPhrase, splitMatches, whyExcluded } from "../src/lib/matchRules";
+import { byShown, contextFor, dealbreakerPhrase, neverShown, splitMatches, whyExcluded, withinReach } from "../src/lib/matchRules";
 import type { Job } from "../src/data/jobs";
 
 let pass = 0;
@@ -109,6 +109,26 @@ test("with few good matches, the best fair ones fill the list", () => {
   assert.deepEqual(s.weaker.map((j) => j.id), ["e"]);
 });
 test("a score under the floor is never brought in to fill", () => assert.equal(splitMatches([job({ id: "a", match: 44 })], ctx()).shown.length, 0));
+
+// the job board: everything we have, held to where you can work
+const reach = (over: Record<string, unknown> = {}) => ({ miles: 30, includeRemote: true, places: ["Farmingdale, NY"], ...over });
+test("the board keeps a job inside your distance", () => assert.equal(withinReach(job({ id: "a", distanceMiles: 12 }), reach()), "ok"));
+test("the board leaves out a job beyond your distance", () => assert.equal(withinReach(job({ id: "a", distanceMiles: 240 }), reach()), "far"));
+test("widening the distance lets it in", () => assert.equal(withinReach(job({ id: "a", distanceMiles: 240 }), reach({ miles: 300 })), "ok"));
+test("any distance lets everything onsite in", () => assert.equal(withinReach(job({ id: "a", distanceMiles: 2400 }), reach({ miles: 100 })), "ok"));
+test("a job that cannot be placed is held back, and counted", () => assert.equal(withinReach(job({ id: "a", distanceMiles: null, location: "Dallas, TX" }), reach()), "unplaced"));
+test("a job that names your city is placed even without coordinates", () => assert.equal(withinReach(job({ id: "a", distanceMiles: null, location: "Farmingdale, NY" }), reach()), "ok"));
+test("remote follows the remote switch", () => {
+  assert.equal(withinReach(job({ id: "a", mode: "Remote", distanceMiles: null }), reach()), "ok");
+  assert.equal(withinReach(job({ id: "a", mode: "Remote", distanceMiles: null }), reach({ includeRemote: false })), "remote");
+});
+test("the board never shows something you applied to, dismissed, or that looks fake", () => {
+  const c = ctx({}, [{ jobId: "applied", column: "applied", receipt: { submittedAt: "2026-01-01" } }]);
+  assert.equal(neverShown(job({ id: "applied" }), c), true);
+  assert.equal(neverShown(job({ id: "x", legit: { score: 10, badge: "ghost", factors: [] } }), c), true);
+  assert.equal(neverShown(job({ id: "y" }), c), false);
+});
+test("a job we did not call a match still reaches the board", () => assert.equal(neverShown(job({ id: "w", match: 20 }), ctx()), false));
 
 // order
 test("newest to you comes first, whatever the posting date", () => {

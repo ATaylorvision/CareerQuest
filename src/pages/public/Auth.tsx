@@ -11,7 +11,7 @@ import { PlainPolicyDialog } from "@/components/layout/MarketingLayout";
 import { useStore } from "@/store/AppStore";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { daysFromNow, fmtLongDate } from "@/lib/date";
-import { LIVE_AVAILABLE, supabase } from "@/live/supabase";
+import { ALLOW_DEMO, LIVE_AVAILABLE, supabase } from "@/live/supabase";
 
 function friendly(msg: string) {
   const m = msg.toLowerCase();
@@ -159,6 +159,7 @@ export function LoginPage() {
           Create a free account
         </Link>
       </p>
+      {ALLOW_DEMO && (
       <p className="mt-2 text-center text-sm text-muted-foreground">
         Just looking?{" "}
         <button
@@ -175,6 +176,7 @@ export function LoginPage() {
           Open the sample account
         </button>
       </p>
+      )}
     </AuthFrame>
   );
 }

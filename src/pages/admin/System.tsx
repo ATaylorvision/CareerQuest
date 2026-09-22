@@ -117,6 +117,44 @@ function LinkedInCard() {
   );
 }
 
+/** People who started setup and never signed up. They are removed after a week, or sooner from here. */
+function GuestsCard() {
+  const { data, loading, reload } = useAdminData<{ guests: number; stale: number; removed?: number }>("guests", {}, "guests");
+  const [busy, setBusy] = useState(false);
+  return (
+    <Card>
+      <SectionTitle sub="Visitors who started setup and did not sign up. Each has a temporary account holding their resume and answers.">Guest accounts</SectionTitle>
+      {loading && !data ? (
+        <Loading label="Loading" />
+      ) : (
+        data && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm">
+              <span className="num font-semibold">{data.guests}</span> guests right now, <span className="num font-semibold">{data.stale}</span> older than a week.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || data.stale === 0}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await adminApi("cleanGuests");
+                  reload();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Remove the old ones
+            </Button>
+          </div>
+        )
+      )}
+    </Card>
+  );
+}
+
 export default function AdminSystem() {
   const { data, loading, error, reload } = useAdminData<Health>("health", {}, "health");
 
@@ -174,6 +212,8 @@ export default function AdminSystem() {
           </Card>
 
           <LinkedInCard />
+
+          <GuestsCard />
 
           <Card>
             <SectionTitle sub="Set as environment variables on the server. A missing key turns its feature off rather than breaking the app.">Configuration</SectionTitle>

@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Bookmark, BookmarkCheck, Clock3, EyeOff, Languages, MapPin, TrendingDown, TrendingUp, Users, Wallet, Sparkle } from "lucide-react";
+import { Bookmark, BookmarkCheck, Clock3, EyeOff, Languages, Loader2, MapPin, ScanSearch, TrendingDown, TrendingUp, Users, Wallet, Sparkle } from "lucide-react";
 import { CompanyLogo, ScoreRing } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,35 @@ import { salaryText, type Job } from "@/data/jobs";
 import { COLUMNS } from "@/data/applications";
 import { relDays } from "@/lib/date";
 import { useStore } from "@/store/AppStore";
+import { api, ApiError } from "@/live/api";
+import { useLive } from "@/live/LiveProvider";
+import { recordSignal } from "@/live/signals";
 import { cn } from "@/lib/utils";
+
+/** Scores a listing that is on the board but has no score for this person, so they can see how it fits. */
+export function useCheckFit() {
+  const { reloadJobs } = useLive();
+  const [busy, setBusy] = useState<string | null>(null);
+  const check = async (job: Job) => {
+    setBusy(job.id);
+    try {
+      await api("jobs/match", { ids: [job.id], mode: "score" });
+      await reloadJobs();
+      void recordSignal(job, "checkfit");
+      toast.success("Scored against your resume", { description: job.title });
+    } catch (e) {
+      toast.error("We could not score that one", { description: e instanceof ApiError ? e.message : "Please try again." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  return { check, busy };
+}
 
 export function useSaveJob() {
   const { state, update } = useStore();
   return (job: Job) => {
+    void recordSignal(job, "save");
     const existing = state.applications.find((a) => a.jobId === job.id);
     if (existing) {
       if (existing.column === "saved" && !existing.receipt) {
@@ -42,8 +67,10 @@ export function JobCard({ job, compact, index = 0 }: { job: Job; compact?: boole
   const save = useSaveJob();
   const app = state.applications.find((a) => a.jobId === job.id);
   const col = app ? COLUMNS.find((c) => c.id === app.column)! : null;
+  const { check, busy } = useCheckFit();
 
   const dismiss = () => {
+    void recordSignal(job, "dismiss");
     update((s) => void s.dismissedJobIds.push(job.id));
     toast("Hidden from your feed", {
       description: "We will show fewer roles like this.",
@@ -84,7 +111,14 @@ export function JobCard({ job, compact, index = 0 }: { job: Job; compact?: boole
                 )}
               </div>
             </div>
-            <ScoreRing value={job.match} size={compact ? 46 : 52} sub="match" label="Match score" />
+            {job.unscored ? (
+              <span className="flex h-[52px] w-[52px] shrink-0 flex-col items-center justify-center rounded-full border-2 border-dashed text-[10px] font-medium leading-tight text-muted-foreground" title="Not scored against your resume yet">
+                <span className="text-base font-semibold">?</span>
+                <span>no score</span>
+              </span>
+            ) : (
+              <ScoreRing value={job.match} size={compact ? 46 : 52} sub="match" label="Match score" />
+            )}
           </div>
 
           <div className="relative z-[1] mt-3 flex flex-wrap items-center gap-1.5">
@@ -112,7 +146,16 @@ export function JobCard({ job, compact, index = 0 }: { job: Job; compact?: boole
             )}
           </div>
 
-          {!compact && (
+          {!compact && job.unscored && (
+            <p className="relative z-[1] mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">We have not scored this one against your resume yet.</span>
+              <Button size="xs" variant="outline" disabled={busy === job.id} onClick={() => void check(job)}>
+                {busy === job.id ? <Loader2 className="animate-spin" /> : <ScanSearch />} Check my fit
+              </Button>
+            </p>
+          )}
+
+          {!compact && !job.unscored && (
             <p className="mt-3 flex gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
               <Languages className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
               <span>

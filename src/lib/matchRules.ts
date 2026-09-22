@@ -62,7 +62,7 @@ export function dealbreakerPhrase(d: string): string {
 }
 
 /** Does the listing name one of the places the person works? Only used when there are no coordinates. */
-function namesPlace(location: string, places: string[]): boolean {
+export function namesPlace(location: string, places: string[]): boolean {
   const l = norm(location);
   if (!l) return false;
   const jobState = location.match(/,\s*([A-Za-z]{2})\s*$/)?.[1]?.toLowerCase();
@@ -152,4 +152,31 @@ export function visibleFor(s: AppState): Job[] {
   if (s.mode === "live") return splitMatches(JOBS, contextFor(s)).shown.sort(byShown);
   const applied = new Set(s.applications.filter((a) => a.receipt?.submittedAt || a.column !== "saved").map((a) => a.jobId));
   return JOBS.filter((j) => !j.imported && !s.dismissedJobIds.includes(j.id) && !applied.has(j.id) && j.legit.score >= s.legitThreshold);
+}
+
+/* ---------------- the job board: everything we have, held to where you can work ---------------- */
+
+export interface Reach {
+  /** Miles from the nearest place, or 100 and over for no limit. */
+  miles: number;
+  includeRemote: boolean;
+  places: string[];
+}
+
+/** Whether a listing is somewhere the person could work. A listing that does not say where counts as onsite. */
+export function withinReach(job: Job, r: Reach): "ok" | "far" | "unplaced" | "remote" {
+  if (job.mode === "Remote") return r.includeRemote ? "ok" : "remote";
+  if (r.miles >= ANY_DISTANCE) return "ok";
+  if (job.distanceMiles != null) return job.distanceMiles <= r.miles ? "ok" : "far";
+  return namesPlace(job.location, r.places) ? "ok" : "unplaced";
+}
+
+/** Listings that never belong on the board: already applied to, marked not for me, or that do not look real. */
+export function neverShown(job: Job, c: Context): boolean {
+  return c.applied.has(job.id) || c.dismissed.has(job.id) || job.legit.score < c.legitThreshold || job.legit.badge === "ghost" || !!job.imported;
+}
+
+export function reachFor(s: Pick<AppState, "prefs" | "profile">): Reach {
+  const c = contextFor({ applications: [], dismissedJobIds: [], legitThreshold: 0, prefs: s.prefs, profile: s.profile });
+  return { miles: s.prefs.maxDistanceMiles, includeRemote: c.wantsRemote, places: c.places };
 }

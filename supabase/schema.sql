@@ -581,3 +581,103 @@ create table if not exists public.linkedin_runs (
 create index if not exists linkedin_runs_started_idx on public.linkedin_runs (started_at desc);
 alter table public.linkedin_runs enable row level security;
 revoke all on public.linkedin_runs from anon, authenticated;
+
+-- ---------------------------------------------------------------
+-- Guests. A visitor who starts setting up gets a temporary account
+-- (Supabase anonymous sign in). When they sign up, that same account
+-- gets an email and password, so nothing has to be moved.
+-- ---------------------------------------------------------------
+alter table public.profiles add column if not exists is_guest boolean not null default false;
+alter table public.profiles add column if not exists salary_ceiling integer;
+alter table public.profiles add column if not exists target_other text;
+
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, email, full_name, is_guest)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', ''), coalesce(new.is_anonymous, false))
+  on conflict (id) do nothing;
+  return new;
+end $$;
+
+-- Keeps the profile in step when a guest becomes a member, or a member changes their email.
+create or replace function public.sync_user_identity() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.profiles
+     set email = new.email,
+         is_guest = coalesce(new.is_anonymous, false),
+         full_name = case when coalesce(full_name, '') = '' then coalesce(new.raw_user_meta_data->>'full_name', '') else full_name end
+   where id = new.id;
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_updated on auth.users;
+create trigger on_auth_user_updated after update of email, is_anonymous, raw_user_meta_data on auth.users
+  for each row execute function public.sync_user_identity();
+
+-- A person cannot decide for themselves that they are or are not a guest.
+create or replace function public.guard_profile_columns() returns trigger
+language plpgsql as $$
+begin
+  if current_user in ('service_role', 'postgres', 'supabase_admin') then
+    return new;
+  end if;
+  if new.is_admin is distinct from old.is_admin
+     or new.plan_tier is distinct from old.plan_tier
+     or new.billing_cycle is distinct from old.billing_cycle
+     or new.stripe_customer_id is distinct from old.stripe_customer_id
+     or new.stripe_subscription_id is distinct from old.stripe_subscription_id
+     or new.subscription_status is distinct from old.subscription_status
+     or new.trial_ends_at is distinct from old.trial_ends_at
+     or new.current_period_end is distinct from old.current_period_end
+     or new.cancel_at_period_end is distinct from old.cancel_at_period_end
+     or new.add_ons is distinct from old.add_ons
+     or new.is_guest is distinct from old.is_guest
+     or new.email is distinct from old.email
+     or new.id is distinct from old.id then
+    raise exception 'Only CareerQuest can change that field.' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+
+-- Guests who never signed up are removed after a week, with everything they made.
+create or replace function public.delete_stale_guests(days integer default 7) returns integer
+language plpgsql security definer set search_path = public, auth as $$
+declare n integer;
+begin
+  with gone as (
+    delete from auth.users u using public.profiles p
+     where p.id = u.id and p.is_guest and u.created_at < now() - make_interval(days => days)
+    returning u.id
+  )
+  select count(*) into n from gone;
+  return n;
+end $$;
+revoke all on function public.delete_stale_guests(integer) from public, anon, authenticated;
+grant execute on function public.delete_stale_guests(integer) to service_role;
+
+-- ---------------------------------------------------------------
+-- What people do with listings, so recommendations can learn from it.
+-- A person who opens, saves or applies to something we did not rank as
+-- a match is telling us something. Rows are private to their owner.
+-- ---------------------------------------------------------------
+create table if not exists public.match_signals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  job_id text not null references public.jobs(id) on delete cascade,
+  kind text not null check (kind in ('open', 'save', 'apply', 'dismiss', 'checkfit')),
+  was_match boolean not null default false,
+  score_then integer,
+  created_at timestamptz not null default now()
+);
+create index if not exists match_signals_user_idx on public.match_signals (user_id, created_at desc);
+alter table public.match_signals enable row level security;
+drop policy if exists "own rows" on public.match_signals;
+create policy "own rows" on public.match_signals for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ---------------------------------------------------------------
+-- A person may set their own confirmed home point and the new
+-- preference fields. Billing, staff and guest columns stay server-only.
+-- ---------------------------------------------------------------
+grant update (home_lat, home_lng, home_geocoded_for, anchors, salary_ceiling, target_other) on public.profiles to authenticated;

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { runPipeline, type Progress } from "./pipeline";
-import { setLiveJobs } from "@/data/jobs";
+import { JOBS, setLiveJobs, setMoreJobs } from "@/data/jobs";
+import { loadMoreJobs } from "./pipeline";
 
 interface RefreshState {
   running: boolean;
@@ -41,6 +42,8 @@ export async function startRefresh(beforeSearch?: () => Promise<void>) {
       onProgress: (p) => set({ progress: p }),
       onJobs: (jobs) => setLiveJobs(jobs),
     });
+    // The search may have added listings to the shared cache, so the board is read again.
+    setMoreJobs(await loadMoreJobs(new Set(JOBS.map((j) => j.id))).catch(() => []));
     set({ running: false, lastRunAt: Date.now(), lastFound: res.total, lastNote: res.note ?? "" });
   } catch (e) {
     set({ running: false, error: (e as Error).message });

@@ -86,6 +86,88 @@ export async function geocodeCity(city: string, state: string): Promise<Point | 
   }
 }
 
+export interface PlaceCandidate {
+  /** How we will write it down and search from it: "Farmingdale, NY". */
+  label: string;
+  /** The longer form shown to the person so they can tell two places of the same name apart. */
+  detail: string;
+  lat: number;
+  lng: number;
+}
+
+interface NominatimAddress {
+  city?: string;
+  town?: string;
+  village?: string;
+  hamlet?: string;
+  suburb?: string;
+  municipality?: string;
+  county?: string;
+  state?: string;
+  postcode?: string;
+  "ISO3166-2-lvl4"?: string;
+}
+
+const STATE_FROM_ISO = (iso?: string) => (iso?.startsWith("US-") ? iso.slice(3) : null);
+
+function candidateOf(lat: number, lng: number, a: NominatimAddress): PlaceCandidate | null {
+  // "Village of Farmingdale" is how the map names it, and "Farmingdale" is how anyone writes it.
+  const city = (a.city ?? a.town ?? a.village ?? a.hamlet ?? a.suburb ?? a.municipality)?.replace(/^(?:Village|Town|City|Borough|Township|Hamlet) of /i, "");
+  const st = STATE_FROM_ISO(a["ISO3166-2-lvl4"]);
+  if (!city || !st || !Number.isFinite(lat) || !Number.isFinite(lng) || !inUS({ lat, lng })) return null;
+  return { label: `${city}, ${st}`, detail: [city, a.county, a.state].filter(Boolean).join(", "), lat, lng };
+}
+
+/**
+ * Candidates for what someone typed, so they can pick the right one and we never
+ * search from a misspelling. A ZIP code gives exactly one; a name can give several.
+ */
+export async function searchPlaces(text: string): Promise<PlaceCandidate[]> {
+  const q = text.trim().slice(0, 120);
+  if (q.length < 2) return [];
+  const zip = q.match(/^(\d{5})(?:-\d{4})?$/)?.[1];
+  if (zip) {
+    try {
+      const data = (await getJson(`https://api.zippopotam.us/us/${zip}`)) as { places?: { "place name": string; state: string; "state abbreviation": string; latitude: string; longitude: string }[] };
+      const p = data.places?.[0];
+      if (!p) return [];
+      const c = { lat: Number(p.latitude), lng: Number(p.longitude) };
+      return inUS(c) ? [{ label: `${p["place name"]}, ${p["state abbreviation"]}`, detail: `${p["place name"]}, ${p.state} ${zip}`, ...c }] : [];
+    } catch {
+      return [];
+    }
+  }
+  try {
+    const params = new URLSearchParams({ q, format: "jsonv2", countrycodes: "us", addressdetails: "1", limit: "6" });
+    const data = (await getJson(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { "User-Agent": "CareerQuest/1.0 (place check; contact via careerquest-app.vercel.app)" } })) as { lat: string; lon: string; address: NominatimAddress }[];
+    const seen = new Set<string>();
+    const out: PlaceCandidate[] = [];
+    for (const r of data) {
+      const c = candidateOf(Number(r.lat), Number(r.lon), r.address ?? {});
+      // Two places can share a name, so the county is part of what tells them apart.
+      if (c && !seen.has(c.detail)) {
+        seen.add(c.detail);
+        out.push(c);
+      }
+    }
+    return out.slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+/** The place at a pair of coordinates, for "use my current location". */
+export async function placeAt(lat: number, lng: number): Promise<PlaceCandidate | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inUS({ lat, lng })) return null;
+  try {
+    const params = new URLSearchParams({ lat: String(lat), lon: String(lng), format: "jsonv2", zoom: "10", addressdetails: "1" });
+    const r = (await getJson(`https://nominatim.openstreetmap.org/reverse?${params}`, { headers: { "User-Agent": "CareerQuest/1.0 (place check; contact via careerquest-app.vercel.app)" } })) as { lat: string; lon: string; address?: NominatimAddress };
+    return candidateOf(Number(r.lat), Number(r.lon), r.address ?? {});
+  } catch {
+    return null;
+  }
+}
+
 /** Coordinates for a US place written the way a person would write it. Null when we cannot tell. */
 export async function geocodeUS(place: string): Promise<Point | null> {
   const text = place.trim();

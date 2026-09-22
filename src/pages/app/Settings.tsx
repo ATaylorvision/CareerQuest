@@ -16,6 +16,8 @@ import { downloadText } from "@/lib/resumeBuild";
 import { api } from "@/live/api";
 import { supabase } from "@/live/supabase";
 import { useLive } from "@/live/LiveProvider";
+import { PlacePicker } from "@/components/PlacePicker";
+import { saveConfirmedPlace } from "@/live/place";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { cn } from "@/lib/utils";
 
@@ -97,19 +99,43 @@ export default function Settings() {
                 toast.success("Profile saved");
               }}
             >
-              {(["name", "email", "location"] as const).map((k) => (
+              {(["name", "email"] as const).map((k) => (
                 <div key={k} className="space-y-1.5">
-                  <Label htmlFor={`pf-${k}`} className="capitalize">{k === "location" ? "Home base" : k}</Label>
+                  <Label htmlFor={`pf-${k}`} className="capitalize">{k}</Label>
                   <Input
                     id={`pf-${k}`}
                     value={profile[k]}
                     readOnly={live && k === "email"}
-                    placeholder={k === "location" ? "City, State" : undefined}
                     onChange={(e) => setProfile({ ...profile, [k]: e.target.value })}
                   />
-                  {k === "location" && <p className="text-xs text-muted-foreground">We search out from here. Onsite and hybrid roles further than your commute range are left out.</p>}
                 </div>
               ))}
+              <div className="sm:col-span-2">
+                {live ? (
+                  <>
+                    <PlacePicker
+                      value={state.profile.location}
+                      confirmed={!!state.profile.locationConfirmed}
+                      label="Home base"
+                      onConfirm={async (pl) => {
+                        if (!(await saveConfirmedPlace(pl))) {
+                          toast.error("We could not save that place. Please try again.");
+                          return;
+                        }
+                        update((s) => {
+                          s.profile.location = pl.label;
+                          s.profile.locationConfirmed = true;
+                        });
+                        setProfile((cur) => ({ ...cur, location: pl.label }));
+                        toast.success("Home base confirmed", { description: `We will search from ${pl.label}.` });
+                      }}
+                    />
+                    <p className="mt-1.5 text-xs text-muted-foreground">We search out from here. Onsite and hybrid roles further than your max distance are left out.</p>
+                  </>
+                ) : (
+                  <Input value={profile.location} onChange={(e) => setProfile({ ...profile, location: e.target.value })} aria-label="Home base" />
+                )}
+              </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="pf-h">Headline</Label>
                 <Input id="pf-h" value={profile.headline} onChange={(e) => setProfile({ ...profile, headline: e.target.value })} />
@@ -188,14 +214,14 @@ export default function Settings() {
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
                   <div className="mb-2 flex justify-between text-sm">
-                    <span className="font-medium" id="sf-l">Salary floor</span>
-                    <span className="num font-semibold">${p.salaryFloor.toLocaleString()}</span>
+                    <span className="font-medium" id="sf-l">Salary range</span>
+                    <span className="num font-semibold">${p.salaryFloor.toLocaleString()} to ${(p.salaryCeiling ?? 150000).toLocaleString()}</span>
                   </div>
-                  <Slider aria-labelledby="sf-l" value={[p.salaryFloor]} min={30000} max={150000} step={5000} onValueChange={([v]) => update((s) => void (s.prefs.salaryFloor = v))} />
+                  <Slider aria-labelledby="sf-l" value={[p.salaryFloor, Math.max(p.salaryFloor + 5000, p.salaryCeiling ?? 150000)]} min={30000} max={200000} step={5000} minStepsBetweenThumbs={1} onValueChange={([a, b]) => update((s) => { s.prefs.salaryFloor = a; s.prefs.salaryCeiling = b; })} />
                 </div>
                 <div>
                   <div className="mb-2 flex justify-between text-sm">
-                    <span className="font-medium" id="cr-l">How far you would commute</span>
+                    <span className="font-medium" id="cr-l">Max distance</span>
                     <span className="num font-semibold">{p.maxDistanceMiles >= 100 ? "Any distance" : `${p.maxDistanceMiles} miles`}</span>
                   </div>
                   <Slider aria-labelledby="cr-l" value={[p.maxDistanceMiles]} min={5} max={100} step={5} onValueChange={([v]) => update((s) => void (s.prefs.maxDistanceMiles = v))} />

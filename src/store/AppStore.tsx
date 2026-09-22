@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ResumeFormat } from "@/lib/resumeFormat";
+import type { SkillClaim } from "@/lib/skillClaims";
 import { buildSeedApplications, type Application } from "@/data/applications";
 import { SEED_CONNECTIONS, type Connection } from "@/data/connections";
 import { SEED_CONVERSATIONS, type Conversation } from "@/data/copilot";
@@ -35,7 +36,8 @@ export interface AppState {
   mode: AppMode;
   authed: boolean;
   onboarded: boolean;
-  profile: { name: string; email: string; location: string; headline: string };
+  /** `locationConfirmed` is true once the person has checked exactly which place we found for what they typed. */
+  profile: { name: string; email: string; location: string; headline: string; locationConfirmed?: boolean };
   prefs: {
     situation: Situation;
     prevField: string;
@@ -46,6 +48,10 @@ export interface AppState {
     /** How far the person will travel from profile.location for an onsite or hybrid job. */
     maxDistanceMiles: number;
     salaryFloor: number;
+    /** The top of the pay range they are hoping for. Shown and saved, never used to hide a job. */
+    salaryCeiling?: number;
+    /** A career they want that is not in our list, in their own words. */
+    targetOther?: string;
     mustHaves: string[];
     dealbreakers: string[];
     intensity: Intensity;
@@ -74,6 +80,8 @@ export interface AppState {
     added?: Record<string, Record<string, { id: string; text: string }[]>>;
     /** A full posting pasted in where the listing only gave an excerpt. Saved with the rest of the working state, so private to the account and capped in size. */
     postingText?: Record<string, string>;
+    /** Skills the person told us they have that a posting asked for, by gap. Used whenever a resume is tailored for a job that wants them. */
+    skillClaims?: Record<string, SkillClaim>;
     /** Requirements the person told us they do meet, per job then per requirement, in their own words. */
     claims?: Record<string, Record<string, { detail: string; at: string }>>;
     /** Font, size, spacing and margins for the printed page. One choice for the account, so every version looks alike. */

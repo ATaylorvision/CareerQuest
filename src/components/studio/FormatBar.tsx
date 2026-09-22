@@ -28,7 +28,7 @@ interface Props {
 }
 
 /** Fits the real page to the width available, so the preview is what will print. */
-function PagePreview({ html, pages }: { html: string; pages: number }) {
+export function PagePreview({ html, pages }: { html: string; pages: number }) {
   const box = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.6);
   useEffect(() => {

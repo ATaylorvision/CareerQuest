@@ -9,6 +9,7 @@ import Landing from "@/pages/public/Landing";
 import Pricing from "@/pages/public/Pricing";
 import { LoginPage, ResetPage, SignupPage } from "@/pages/public/Auth";
 import Onboarding from "@/pages/onboarding/Onboarding";
+import FirstResume from "@/pages/onboarding/FirstResume";
 import Dashboard from "@/pages/app/Dashboard";
 import Matches from "@/pages/app/Matches";
 import JobDetail from "@/pages/app/JobDetail";
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/reset" element={<ResetPage />} />
             <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/first-resume" element={<FirstResume />} />
             <Route path="/app" element={<AppShell />}>
               <Route index element={<Dashboard />} />
               <Route path="matches" element={<Matches />} />

@@ -22,6 +22,7 @@
     "test:matches": "tsx scripts/test-matches.ts",
     "test:links": "tsx scripts/test-links.ts",
     "test:apify": "tsx scripts/test-apify.ts",
+    "test:claims": "tsx scripts/test-claims.ts",
     "e2e:linkedin": "node scripts/e2e-linkedin.mjs"
   },
   "dependencies": {

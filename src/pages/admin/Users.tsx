@@ -61,7 +61,7 @@ export default function AdminUsers() {
                           {u.full_name || "No name given"}
                           {u.is_admin && <ShieldCheck className="ml-1.5 inline h-3.5 w-3.5 text-primary" aria-label="Admin" />}
                         </div>
-                        <div className="truncate text-xs text-muted-foreground">{u.email}</div>
+                        <div className="truncate text-xs text-muted-foreground">{u.email || "Guest, not signed up yet"}</div>
                       </Td>
                       <Td>
                         <Tag className={TIER_TONE[u.plan_tier]}>{u.plan_tier}</Tag>
@@ -109,6 +109,7 @@ interface Detail {
   matches: { score: number; why: string | null; jobs: { title: string; company: string } | null }[];
   resumes: { id: string; file_name: string | null; is_base: boolean; created_at: string }[];
   counts: { letters: number; versions: number };
+  usage: { tailoredResumes: number; coverLetters: number; copilotMessages: number; freeLimit: number };
   events: { type: string; note: string | null; occurred_at: string }[];
 }
 
@@ -178,6 +179,15 @@ function UserPanel({ userId, onClose, onChanged }: { userId: string; onClose: ()
                 </div>
               </div>
             )}
+
+            <section>
+              <SectionTitle sub="Read from the counters the plan is enforced against, so this is what they have really used.">Used this month</SectionTitle>
+              <div className="grid grid-cols-3 gap-3 rounded-lg border p-3 text-center">
+                <Mini label={data.profile.plan_tier === "free" ? `Tailored resumes of ${data.usage.freeLimit}` : "Tailored resumes"} n={data.usage.tailoredResumes} />
+                <Mini label={data.profile.plan_tier === "free" ? `Cover letters of ${data.usage.freeLimit}` : "Cover letters"} n={data.usage.coverLetters} />
+                <Mini label="Wren messages" n={data.usage.copilotMessages} />
+              </div>
+            </section>
 
             <div className="grid grid-cols-4 gap-3 rounded-lg border p-3 text-center">
               <Mini label="Applications" n={data.applications.length} />

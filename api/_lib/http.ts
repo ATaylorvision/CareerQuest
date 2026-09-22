@@ -28,6 +28,8 @@ export interface AuthedUser {
   email: string | null;
   /** True once the person has proved they own the address. */
   emailConfirmed: boolean;
+  /** A visitor still setting up, before they have made an account. Guests get smaller limits and no member features. */
+  guest: boolean;
 }
 
 export async function requireUser(req: VercelRequest): Promise<AuthedUser> {
@@ -36,7 +38,12 @@ export async function requireUser(req: VercelRequest): Promise<AuthedUser> {
   if (!token) throw new HttpError(401, "Please log in again.");
   const { data, error } = await admin().auth.getUser(token);
   if (error || !data.user) throw new HttpError(401, "Your session expired. Please log in again.");
-  return { id: data.user.id, email: data.user.email ?? null, emailConfirmed: !!data.user.email_confirmed_at };
+  return { id: data.user.id, email: data.user.email ?? null, emailConfirmed: !!data.user.email_confirmed_at, guest: !!data.user.is_anonymous };
+}
+
+/** Stops a guest from using something that is for members. */
+export function requireMember(user: AuthedUser, what = "that") {
+  if (user.guest) throw new HttpError(403, `Create a free account to use ${what}.`);
 }
 
 /**
@@ -50,7 +57,10 @@ export async function requireUser(req: VercelRequest): Promise<AuthedUser> {
  * by the monthly spend limit set with each provider.
  */
 export async function quota(user: AuthedUser, bucket: string, limit: number, what = "that"): Promise<void> {
-  const { data, error } = await admin().rpc("take_quota", { p_user: user.id, p_bucket: bucket, p_limit: limit });
+  // Anyone can start as a guest, so a guest gets a third of what a member does. That keeps the cost of a
+  // visitor who never signs up small, without getting in the way of one who is genuinely setting up.
+  const allowed = user.guest ? Math.max(1, Math.floor(limit / 3)) : limit;
+  const { data, error } = await admin().rpc("take_quota", { p_user: user.id, p_bucket: bucket, p_limit: allowed });
   if (error) {
     console.error("[quota]", bucket, error.message);
     return;

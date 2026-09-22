@@ -18,6 +18,7 @@ import { companySiteUrl } from "@/lib/companySite";
 import { fireConfetti } from "@/lib/confetti";
 import { removeApplication, saveApplication } from "@/live/persist";
 import { supabase } from "@/live/supabase";
+import { recordSignal } from "@/live/signals";
 
 const GREETING = /^(dear|hello|hi|to whom)\b/i;
 
@@ -150,6 +151,7 @@ export function LiveApply({ job, open, onOpenChange }: { job: Job; open: boolean
       s.activity[0] = true;
     });
     void saveApplication(next);
+    void recordSignal(job, "apply");
     setApplied(true);
     setDidApply(true);
     fireConfetti();

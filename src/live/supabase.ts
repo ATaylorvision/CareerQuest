@@ -4,6 +4,9 @@ const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 /** True when the app is connected to a real database. Without it, only the demo account works. */
+/** The sample account, its sample testimonials and its numbers. Off in a real launch. */
+export const ALLOW_DEMO = import.meta.env.VITE_ALLOW_DEMO === "1";
+
 export const LIVE_AVAILABLE = !!(url && key);
 
 export const supabase: SupabaseClient | null = LIVE_AVAILABLE

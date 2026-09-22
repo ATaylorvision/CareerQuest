@@ -68,6 +68,15 @@ npm run security               # two accounts, then tries every way one could re
 
 Insider Connections needs contacts the user imports themselves, which is not built, so it sits behind its add on page. Billing works in Stripe test mode once the three Stripe keys are set. Applications are recorded as "Manual required" because CareerQuest cannot submit to employer systems for the user yet.
 
+## Guest onboarding, job board and skill claims
+
+- Visitors onboard as Supabase anonymous users (enable "Allow anonymous sign-ins"), then convert with `auth.updateUser` at download time; same user id, nothing migrates. Guests get a third of each quota and are blocked from chat and verification by `requireMember`.
+- Home location is confirmed through `PlacePicker` (`jobs/search` actions `place` and `placeAt`) and saved with coordinates.
+- Matches shows scored matches on top and the whole job cache (within reach) below; `match_signals` records opens, saves, applies and dismissals for scoring.
+- Roadmap skill claims live in `resume.skillClaims` and are used by tailoring and requirement checks.
+- Usage comes from `usage_counters`. Demo access needs `VITE_ALLOW_DEMO=1`.
+- Full recap: `docs/WORK_RECAP.md`.
+
 ## Admin panel
 
 `#/admin`, for staff only. An account becomes staff in one of two ways, and both are decided on the server:

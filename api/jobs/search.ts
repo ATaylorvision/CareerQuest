@@ -2,7 +2,7 @@ import { admin, body, route, quota } from "../_lib/http.js";
 import { adzunaSearch, jsearchSearch, looksEvergreen, looksLikeAgency, remoteType, type RawJob } from "../_lib/sources.js";
 import { checkCompanySite, type SiteCheck } from "../_lib/ats.js";
 import { computeLegitimacy, type LegitSignals } from "../../src/lib/legit.js";
-import { geocodeCity, geocodeUS, haversineMiles, type Point } from "../_lib/geo.js";
+import { geocodeCity, geocodeUS, haversineMiles, placeAt, searchPlaces, type Point } from "../_lib/geo.js";
 import { getItems, getRun, hasApify, LIMITS, mapLinkedIn, startLinkedInRun } from "../_lib/apify.js";
 
 const MAX_JOBS = 30;
@@ -50,7 +50,18 @@ const tag = (p: Promise<RawJob[]>, scoped: boolean): Promise<Found[]> =>
   p.then((rows) => rows.map((r) => ({ ...r, scoped }))).catch((): Found[] => []);
 
 export default route(async (req, _res, user) => {
-  const { extraQuery, action, runId } = body<{ extraQuery?: string; action?: string; runId?: string }>(req);
+  const { extraQuery, action, runId, q, lat, lng } = body<{ extraQuery?: string; action?: string; runId?: string; q?: string; lat?: number; lng?: number }>(req);
+
+  // Confirming where someone lives. Everyone's search starts from this, so it has to be right.
+  if (action === "place") {
+    await quota(user, "place", 90, "place lookups");
+    return { places: await searchPlaces(String(q ?? "")) };
+  }
+  if (action === "placeAt") {
+    await quota(user, "place", 90, "place lookups");
+    return { place: await placeAt(Number(lat), Number(lng)) };
+  }
+
   const polling = action === "linkedinPoll";
   if (!polling && action !== "linkedinStart") await quota(user, "search", 15, "job searches");
   const db = admin();

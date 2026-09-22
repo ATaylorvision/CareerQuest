@@ -1,14 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { seedState, useStore, type AppState } from "@/store/AppStore";
-import { restoreDemoJobs, setLiveJobs } from "@/data/jobs";
+import { JOBS, restoreDemoJobs, setLiveJobs, setMoreJobs } from "@/data/jobs";
 import { emptyResume, restoreDemoResume, setBaseResume, type Resume } from "@/data/user";
 import { INTENSITY_META } from "@/data/plan";
 import { normalizeApplications } from "@/lib/tracker";
 import { DEFAULT_RESUME_TEMPLATE } from "@/data/resumeTemplates";
 import { DEFAULT_LETTER_TEMPLATE } from "@/data/letterTemplates";
 import { LIVE_AVAILABLE, supabase } from "./supabase";
-import { loadJobs } from "./pipeline";
+import { loadJobs, loadMoreJobs } from "./pipeline";
+import { USAGE_EVENT } from "./api";
 import { setHomePoint } from "./mapJob";
 
 interface LiveCtx {
@@ -69,6 +70,10 @@ interface ProfileRow {
   remote_pref: AppState["prefs"]["remote"];
   max_distance_miles: number | null;
   home_lat: number | null;
+  home_geocoded_for: string | null;
+  salary_ceiling: number | null;
+  target_other: string | null;
+  is_guest: boolean;
   home_lng: number | null;
   salary_floor: number | null;
   must_haves: string[];
@@ -100,8 +105,23 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  /** What this person has really used this month, read from the counters the server keeps. It is what their plan is measured against. */
+  const refreshUsage = useCallback(async () => {
+    if (!supabase || modeRef.current !== "live") return;
+    const month = `${new Date().toISOString().slice(0, 7)}-01`;
+    const { data } = await supabase.from("usage_counters").select("tailored_resumes, cover_letters, copilot_messages").eq("month", month).maybeSingle();
+    update((s) => {
+      s.usage = { tailoredResumes: data?.tailored_resumes ?? 0, coverLetters: data?.cover_letters ?? 0, copilotMessages: data?.copilot_messages ?? 0 };
+    });
+  }, [update]);
+
   const reloadJobs = useCallback(async () => {
     setLiveJobs(await loadJobs());
+    try {
+      setMoreJobs(await loadMoreJobs(new Set(JOBS.map((j) => j.id))));
+    } catch {
+      /* the board is a bonus; matches still load */
+    }
   }, []);
 
   const loadUser = useCallback(
@@ -128,7 +148,14 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       setHomePoint(profile?.home_lat != null && profile?.home_lng != null ? { lat: profile.home_lat, lng: profile.home_lng } : null);
 
       if (profile) {
-        s.profile = { name, email: u.email ?? "", location: profile.location ?? "", headline: profile.headline ?? "" };
+        s.profile = {
+          name,
+          email: u.email ?? "",
+          location: profile.location ?? "",
+          headline: profile.headline ?? "",
+          // Confirmed means we looked up exactly this text and the person said yes, so the coordinates belong to it.
+          locationConfirmed: !!profile.location && profile.home_lat != null && profile.home_geocoded_for === profile.location,
+        };
         s.prefs = {
           situation: profile.situation ?? "changer",
           prevField: profile.prev_field ?? "",
@@ -138,6 +165,8 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
           remote: profile.remote_pref ?? "any",
           maxDistanceMiles: profile.max_distance_miles ?? 30,
           salaryFloor: profile.salary_floor ?? 50000,
+          salaryCeiling: profile.salary_ceiling ?? undefined,
+          targetOther: profile.target_other ?? undefined,
           mustHaves: profile.must_haves ?? [],
           dealbreakers: profile.dealbreakers ?? [],
           intensity: profile.intensity ?? "active",
@@ -175,8 +204,10 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
 
       hydrate(s);
       setUser(u);
+      void refreshUsage();
       try {
         setLiveJobs(await loadJobs());
+        setMoreJobs(await loadMoreJobs(new Set(JOBS.map((j) => j.id))).catch(() => []));
       } catch (e) {
         console.error("Could not load jobs", e);
         setLiveJobs([]);
@@ -189,8 +220,22 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
         setPhase("ready");
       }
     },
-    [hydrate],
+    [hydrate, refreshUsage],
   );
+
+  // Numbers on screen follow what the server has counted, a moment after anything that uses the plan.
+  useEffect(() => {
+    let t: number | undefined;
+    const on = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => void refreshUsage(), 600);
+    };
+    window.addEventListener(USAGE_EVENT, on);
+    return () => {
+      window.removeEventListener(USAGE_EVENT, on);
+      window.clearTimeout(t);
+    };
+  }, [refreshUsage]);
 
   // Watchdog: never leave someone staring at a spinner.
   useEffect(() => {
@@ -223,12 +268,16 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       } else if (event === "SIGNED_IN" && session?.user) {
         // Fires again on token refresh and tab focus. loadUser ignores a user it already loaded.
         setTimeout(() => void loadUser(session.user), 0);
+      } else if (event === "USER_UPDATED" && session?.user) {
+        // A guest just became a member, or someone changed their email. Same account, so nothing reloads.
+        setUser(session.user);
+        update((s) => void (s.profile.email = session.user.email ?? s.profile.email));
       } else if (event === "SIGNED_OUT") {
         onSignedOut();
       }
     });
     return () => data.subscription.unsubscribe();
-  }, [loadUser, onSignedOut]);
+  }, [loadUser, onSignedOut, update]);
 
   /* ---------------- save profile and preferences ---------------- */
 
@@ -245,6 +294,8 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       remote_pref: s.prefs.remote,
       max_distance_miles: s.prefs.maxDistanceMiles,
       salary_floor: s.prefs.salaryFloor,
+      salary_ceiling: s.prefs.salaryCeiling ?? null,
+      target_other: s.prefs.targetOther ?? null,
       must_haves: s.prefs.mustHaves,
       dealbreakers: s.prefs.dealbreakers,
       intensity: INTENSITY_META[s.prefs.intensity] ? s.prefs.intensity : "active",

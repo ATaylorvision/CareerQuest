@@ -76,6 +76,8 @@ export interface Job {
   shownAt?: string;
   /** Already shown to this person once, so it stays in their matches whatever the rules say later. */
   kept?: boolean;
+  /** On the job board but not yet scored against this person's resume. */
+  unscored?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -606,7 +608,9 @@ export const JOBS: Job[] = SEEDS.map((s, i) => {
   };
 });
 
-export const jobById = (id: string) => JOBS.find((j) => j.id === id);
+/** Everything else in the shared job cache: listings that are on the board but have no score for this person yet. */
+export const MORE_JOBS: Job[] = [];
+export const jobById = (id: string) => JOBS.find((j) => j.id === id) ?? MORE_JOBS.find((j) => j.id === id);
 
 export const CATEGORIES: Category[] = [
   "Operations",
@@ -671,8 +675,14 @@ export function setLiveJobs(list: Job[]) {
   bump();
 }
 
+export function setMoreJobs(list: Job[]) {
+  MORE_JOBS.splice(0, MORE_JOBS.length, ...list);
+  bump();
+}
+
 export function restoreDemoJobs() {
   JOBS.splice(0, JOBS.length, ...DEMO_JOBS);
+  MORE_JOBS.splice(0, MORE_JOBS.length);
   bump();
 }
 
@@ -680,6 +690,11 @@ export function restoreDemoJobs() {
 export function patchJob(job: Job) {
   const i = JOBS.findIndex((j) => j.id === job.id);
   if (i >= 0) JOBS[i] = job;
-  else JOBS.push(job);
+  else {
+    JOBS.push(job);
+    // Now that it has a score it belongs with the matches, not the unscored board.
+    const m = MORE_JOBS.findIndex((j) => j.id === job.id);
+    if (m >= 0) MORE_JOBS.splice(m, 1);
+  }
   bump();
 }

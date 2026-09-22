@@ -15,6 +15,12 @@ async function token(): Promise<string> {
   return data.session.access_token;
 }
 
+/** Tells the app that something counted against the person's plan has just happened, so the numbers on screen are read fresh. */
+export const USAGE_EVENT = "cq:usage";
+const announceUsage = (path: string) => {
+  if (typeof window !== "undefined" && /^(studio|chat)/.test(path)) window.dispatchEvent(new Event(USAGE_EVENT));
+};
+
 /** Calls one of our server functions as the signed in user. */
 export async function api<T = unknown>(path: string, payload: unknown = {}): Promise<T> {
   const res = await fetch(`/api/${path}`, {
@@ -33,6 +39,7 @@ export async function api<T = unknown>(path: string, payload: unknown = {}): Pro
     const msg = (json as { error?: string } | null)?.error ?? (res.status === 504 ? "That took too long. Please try again." : "Something went wrong. Please try again.");
     throw new ApiError(msg, res.status);
   }
+  announceUsage(path);
   return json as T;
 }
 
@@ -63,6 +70,7 @@ export async function apiStream(path: string, payload: unknown, onText: (chunk: 
     full += t;
     onText(t);
   }
+  announceUsage(path);
   return full;
 }
 

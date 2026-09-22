@@ -13,6 +13,9 @@ import { ResumeDocument } from "@/components/studio/ResumeDocument";
 import { ChangeCard, GapsPanel, TranslatorPanel, VersionsPanel } from "@/components/studio/panels";
 import { AtsScorePanel, KeywordPanel } from "@/components/studio/AtsPanels";
 import { WrenPanel } from "@/components/studio/WrenPanel";
+import { SignupGate } from "@/components/SignupGate";
+import { relevantClaims } from "@/lib/skillClaims";
+import { useLive } from "@/live/LiveProvider";
 import { FormatBar } from "@/components/studio/FormatBar";
 import { autoAdjust, measureInFrame, suggestCuts, summarise, TWO_PAGE_AFTER_YEARS, yearsOfExperience, type CutSuggestion, type PageFit } from "@/lib/fit";
 import { DEFAULT_FORMAT, type ResumeFormat } from "@/lib/resumeFormat";
@@ -70,6 +73,11 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
   const [params, setParams] = useSearchParams();
   const pro = isPro(state);
   const live = state.mode === "live";
+  // A guest is someone still setting up. They can make and edit their first resume; downloading it needs an account.
+  const { user } = useLive();
+  const guest = !!user?.is_anonymous;
+  const [gate, setGate] = useState<(() => void) | null>(null);
+  const withAccount = (action: () => void) => (guest ? setGate(() => action) : action());
 
   const [doc, setDoc] = useSessionState<Doc>("studio-doc", params.get("doc") === "letter" ? "letter" : "resume");
   // A link from the apply screen can ask for the letter directly.
@@ -226,6 +234,10 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
     }),
     [built],
   );
+
+  // Skills the person told us they have on the Roadmap, that this job asks for. Offered, never added on their own.
+  const claimsHere = useMemo(() => relevantClaims(job, state.resume.skillClaims).filter((c) => c.line), [job, state.resume.skillClaims]);
+  const onPage = new Set(built.roles.flatMap((r) => r.bullets.map((b) => b.text.trim())));
 
   // One list of what Wren has proposed. The chat and the page both read it.
   const store = useSuggestions((sg: Suggestion) => (sg.kind === "add" ? wrenAdd(sg.roleId, sg.after) : wrenReplace(sg.field, sg.after)));
@@ -432,7 +444,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
           note: `${note}.`,
           changeIds: changes.filter((c) => decisions[c.id] === "accepted").map((c) => c.id),
         });
-        s.usage.tailoredResumes += 1;
+        if (s.mode !== "live") s.usage.tailoredResumes += 1;
         if (!s.resume.tailoredJobs.includes(job.id)) s.resume.tailoredJobs.push(job.id);
         if (job.id === "j01") {
           s.planDone.p3 = true;
@@ -468,18 +480,21 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  onSelect={() => {
-                    if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format))
-                      toast.error("Your browser blocked the print window. Allow pop ups and try again.");
-                  }}
+                  onSelect={() =>
+                    withAccount(() => {
+                      if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
+                    })
+                  }
                 >
                   <Printer className="mr-2 h-4 w-4" /> PDF (print to PDF)
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onSelect={() => {
-                    downloadText(`${fileBase}_Resume.txt`, resumeToText(built));
-                    toast.success("Plain text resume downloaded");
-                  }}
+                  onSelect={() =>
+                    withAccount(() => {
+                      downloadText(`${fileBase}_Resume.txt`, resumeToText(built));
+                      toast.success("Plain text resume downloaded");
+                    })
+                  }
                 >
                   <FileDown className="mr-2 h-4 w-4" /> Plain text (.txt)
                 </DropdownMenuItem>
@@ -510,27 +525,33 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
             </Select>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-              <ClipboardPaste /> Add a job
-            </Button>
-            <Segmented<Doc>
-              value={doc}
-              onChange={setDoc}
-              options={[
-                { value: "resume", label: "Resume" },
-                { value: "letter", label: "Cover letter" },
-              ]}
-            />
+            {!guest && (
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                <ClipboardPaste /> Add a job
+              </Button>
+            )}
+            {!guest && (
+              <Segmented<Doc>
+                value={doc}
+                onChange={setDoc}
+                options={[
+                  { value: "resume", label: "Resume" },
+                  { value: "letter", label: "Cover letter" },
+                ]}
+              />
+            )}
             {!pro && doc === "resume" && (
               <Pill tone={freeLeft > 0 ? "muted" : "danger"}>
                 <span className="num">{Math.max(0, freeLeft)}</span> of 3 free tailored resumes left
               </Pill>
             )}
-            <Button asChild variant="ghost" size="sm">
-              <Link to={`/app/jobs/${job.id}`}>
-                View posting <ArrowRight />
-              </Link>
-            </Button>
+            {!guest && (
+              <Button asChild variant="ghost" size="sm">
+                <Link to={`/app/jobs/${job.id}`}>
+                  View posting <ArrowRight />
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -615,9 +636,11 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
               </div>
               <Button
                 variant="outline"
-                onClick={() => {
-                  if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
-                }}
+                onClick={() =>
+                  withAccount(() => {
+                    if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
+                  })
+                }
               >
                 <Printer /> Download PDF
               </Button>
@@ -651,7 +674,35 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
               />
             </Card>
 
-            {live && (
+            {live && !guest && claimsHere.length > 0 && (
+              <Card className="border-success-border p-4">
+                <h2 className="mb-1 text-sm font-semibold">From what you told us you can do</h2>
+                <p className="mb-3 text-xs text-muted-foreground">This job asks for these, and you said you have them. Add the ones you want on this resume.</p>
+                <ul className="space-y-2.5">
+                  {claimsHere.map((c) => {
+                    const added = onPage.has(c.line.trim());
+                    const roleId = built.roles.some((r) => r.id === c.roleId) ? c.roleId : built.roles[0]?.id;
+                    return (
+                      <li key={c.gapId} className="rounded-lg border bg-card p-3 text-[13px]">
+                        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{c.label}</div>
+                        <p>{c.line}</p>
+                        {added ? (
+                          <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-success">
+                            <CheckCheck className="h-3.5 w-3.5" /> On this resume
+                          </span>
+                        ) : (
+                          <Button size="xs" className="mt-2" disabled={!roleId} onClick={() => roleId && addLine(roleId, c.line)}>
+                            Add to this resume
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            )}
+
+            {live && !guest && (
               <Card className="p-4" id="wren-card">
                 <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
                   <Sparkles className="h-4 w-4 text-primary" aria-hidden /> Wren, your resume editor
@@ -741,6 +792,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
                   </AccordionContent>
                 </AccordionItem>
 
+                {!guest && (
                 <AccordionItem value="versions" className="border-b-0">
                   <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
                     Saved versions <span className="ml-1 font-normal text-muted-foreground">({state.resume.versions.length})</span>
@@ -755,6 +807,7 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
                     />
                   </AccordionContent>
                 </AccordionItem>
+                )}
               </Accordion>
             </Card>
           </div>
@@ -785,6 +838,21 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
         </AlertDialogContent>
       </AlertDialog>
       <ImportJobDialog open={importOpen} onOpenChange={setImportOpen} onAdded={(id) => setParams({ job: id })} />
+      <SignupGate
+        open={!!gate}
+        onOpenChange={(o) => !o && setGate(null)}
+        onCreated={async () => {
+          // The account exists now. Do the download they asked for, then send them a copy.
+          gate?.();
+          update((s) => void (s.onboarded = true));
+          try {
+            await api("studio", { action: "emailResume", html: renderResumeHtml(built, state.resume.templateId, fileBase, state.profile.headline, format), subject: `Your resume for ${job.title} at ${job.company.name}` });
+            return true;
+          } catch {
+            return false;
+          }
+        }}
+      />
     </div>
   );
 }

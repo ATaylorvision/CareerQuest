@@ -180,7 +180,18 @@ export default route(async (req, _res, user) => {
     certifications: resume.certifications,
     skills: resume.skills,
   };
-  const situation = `The person's situation: ${profile?.situation ?? "unknown"}. Coming from: ${profile?.prev_field ?? "unknown"}. Moving toward: ${profile?.target_field ?? "unknown"}.\n\nRESUME (JSON):\n${JSON.stringify(compact)}`;
+  // What this person has done with listings tells us more than what they typed. Jobs they chose to open, save or
+  // apply to, and jobs they turned away, sharpen how the next ones are scored.
+  const { data: sig } = await db.from("match_signals").select("kind, jobs(title, company)").eq("user_id", user.id).order("created_at", { ascending: false }).limit(60);
+  const label = (r: { jobs: unknown }) => {
+    const j = (Array.isArray(r.jobs) ? r.jobs[0] : r.jobs) as { title: string; company: string } | null;
+    return j ? `${j.title} at ${j.company}` : "";
+  };
+  const wanted = [...new Set((sig ?? []).filter((r) => ["save", "apply", "checkfit", "open"].includes(r.kind as string)).map(label).filter(Boolean))].slice(0, 10);
+  const turnedDown = [...new Set((sig ?? []).filter((r) => r.kind === "dismiss").map(label).filter(Boolean))].slice(0, 8);
+  const behaviour = [wanted.length ? `Jobs they chose to look at, save or apply to (what they actually want): ${wanted.join("; ")}.` : "", turnedDown.length ? `Jobs they said are not for them: ${turnedDown.join("; ")}.` : ""].filter(Boolean).join("\n");
+
+  const situation = `${behaviour ? `${behaviour}\n\n` : ""}The person's situation: ${profile?.situation ?? "unknown"}. Coming from: ${profile?.prev_field ?? "unknown"}. Moving toward: ${profile?.target_field ?? "unknown"}.\n\nRESUME (JSON):\n${JSON.stringify(compact)}`;
   const haveMatch = new Map((existing ?? []).map((m) => [m.job_id, m]));
 
   /* ---------------- score ---------------- */

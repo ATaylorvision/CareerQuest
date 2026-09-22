@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { HttpError, admin, body, route, quota } from "../_lib/http.js";
+import { HttpError, admin, body, route, quota, requireMember } from "../_lib/http.js";
 import { FAST_MODEL, structured } from "../_lib/claude.js";
 
 const SCHEMA = {
@@ -27,6 +27,7 @@ Do not be generous. If you cannot tell, answer false.`;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 
 export default route(async (req, _res, user) => {
+  requireMember(user, "receipts");
   await quota(user, "receipt", 20, "checking confirmations");
   const { company, title, text, fileName, mime, data } = body<{ company?: string; title?: string; text?: string; fileName?: string; mime?: string; data?: string }>(req);
   if (!company || !title) throw new HttpError(400, "Which application is this for?");

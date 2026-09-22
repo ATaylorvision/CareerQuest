@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Check, ChevronDown, Clock, ExternalLink, GraduationCap, Map as MapIcon, Play, Wallet } from "lucide-react";
+import { BadgeCheck, Check, ChevronDown, Clock, ExternalLink, GraduationCap, HandHeart, Map as MapIcon, Pencil, Play, Wallet } from "lucide-react";
 import { Card, PageHeader, ScoreBar, ScoreRing } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { SEVERITY_LABEL } from "@/data/gaps";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { cn } from "@/lib/utils";
 import { linksFor } from "@/data/resourceLinks";
+import { SkillClaimDialog } from "@/components/SkillClaimDialog";
+import { LEVELS } from "@/lib/skillClaims";
+import { BASE_RESUME } from "@/data/user";
 
 export default function Roadmap() {
   useDocTitle("Skill Gap Roadmap");
@@ -18,6 +21,8 @@ export default function Roadmap() {
   const [params] = useSearchParams();
   const agg = gapAggregate(state);
   const [open, setOpen] = useState<string | null>(params.get("gap") ?? agg.items[0]?.gap.id ?? null);
+  const [claiming, setClaiming] = useState<{ id: string; label: string; jobId: string | null } | null>(null);
+  const claims = state.resume.skillClaims ?? {};
 
   useEffect(() => {
     const g = params.get("gap");
@@ -114,6 +119,33 @@ export default function Roadmap() {
                   <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_260px]">
                     <div>
                       <p className="text-sm text-foreground/85">{gap.note}</p>
+
+                      {claims[gap.id] ? (
+                        <div className="mt-4 rounded-lg border border-success-border bg-success-soft/60 p-3.5 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="inline-flex items-center gap-1.5 font-semibold text-success">
+                              <BadgeCheck className="h-4 w-4" aria-hidden /> You told us you have this
+                            </span>
+                            <Button size="xs" variant="ghost" onClick={() => setClaiming({ id: gap.id, label: gap.label, jobId: jobs[0]?.id ?? null })}>
+                              <Pencil /> Change
+                            </Button>
+                          </div>
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            {LEVELS.find((l) => l.id === claims[gap.id].level)?.label}
+                            {" · "}
+                            {claims[gap.id].roleId === "outside" ? claims[gap.id].where || "Outside of a job" : (() => { const r = BASE_RESUME.roles.find((x) => x.id === claims[gap.id].roleId); return r ? `${r.title}, ${r.company}` : "On a past job"; })()}
+                          </p>
+                          <p className="mt-1.5">{claims[gap.id].line || claims[gap.id].detail}</p>
+                          <p className="mt-1.5 text-xs text-muted-foreground">We use this when your resume is tailored for a job that asks for it, and it counts as covered on those jobs.</p>
+                        </div>
+                      ) : (
+                        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-3">
+                          <span className="flex-1 text-sm text-muted-foreground">Already have this skill or experience, and it is just missing from your resume?</span>
+                          <Button size="sm" variant="outline" onClick={() => setClaiming({ id: gap.id, label: gap.label, jobId: jobs[0]?.id ?? null })}>
+                            <HandHeart /> I have this
+                          </Button>
+                        </div>
+                      )}
                       <h3 className="mb-2 mt-5 flex items-center gap-2 text-sm font-semibold">
                         <GraduationCap className="h-4 w-4 text-primary" /> Ways to close it
                       </h3>
@@ -210,6 +242,7 @@ export default function Roadmap() {
           </Button>
         </Card>
       )}
+      {claiming && <SkillClaimDialog key={claiming.id} open onOpenChange={(o) => !o && setClaiming(null)} gap={claiming} jobId={claiming.jobId} />}
     </div>
   );
 }

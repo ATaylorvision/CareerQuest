@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useStore } from "@/store/AppStore";
 import { BASE_RESUME } from "@/data/user";
+import { claimForRequirement } from "@/lib/skillClaims";
 import { Card, SectionTitle } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ const attempted = new Set<string>();
 export function useEnrich(job?: Job) {
   const [failed, setFailed] = useState(false);
   const id = job?.id;
-  const needs = !!job?.live && job.translations === undefined;
+  const needs = !!job?.live && !job.unscored && job.translations === undefined;
   useEffect(() => {
     if (!id || !needs || attempted.has(id)) return;
     attempted.add(id);
@@ -167,7 +168,7 @@ export function LiveRequirementsCard({ job, loading }: { job: Job; loading: bool
       if (s.resume.claims?.[job.id]) delete s.resume.claims[job.id][text];
     });
 
-  const met = reqs.filter((r) => r.status === "met" || claims[r.text]).length;
+  const met = reqs.filter((r) => r.status === "met" || claims[r.text] || claimForRequirement(state.resume.skillClaims, r.text)).length;
 
   return (
     <Card>
@@ -179,7 +180,8 @@ export function LiveRequirementsCard({ job, loading }: { job: Job; loading: bool
       ) : (
         <ul className="space-y-3 text-sm">
           {reqs.map((r) => {
-            const claim = claims[r.text];
+            const roadmap = claimForRequirement(state.resume.skillClaims, r.text);
+            const claim = claims[r.text] ?? (roadmap ? { detail: roadmap.line || roadmap.detail, at: roadmap.at } : undefined);
             const status = claim ? "met" : r.status;
             return (
               <li key={r.text}>

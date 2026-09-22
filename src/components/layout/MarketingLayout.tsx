@@ -106,7 +106,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                   <Link to="/login">Log in</Link>
                 </Button>
                 <Button asChild>
-                  <Link to="/signup">Start free</Link>
+                  <Link to="/onboarding">Start free</Link>
                 </Button>
               </>
             )}
@@ -135,7 +135,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                 <Link to="/login">Log in</Link>
               </Button>
               <Button asChild>
-                <Link to="/signup">Start free</Link>
+                <Link to="/onboarding">Start free</Link>
               </Button>
             </div>
           </div>
@@ -159,7 +159,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
           <div>
             <div className="mb-3 text-sm font-semibold">Account</div>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><Link className="hover:text-foreground" to="/signup">Create an account</Link></li>
+              <li><Link className="hover:text-foreground" to="/onboarding">Get started</Link></li>
               <li><Link className="hover:text-foreground" to="/login">Log in</Link></li>
             </ul>
           </div>

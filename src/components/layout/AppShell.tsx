@@ -162,7 +162,7 @@ const MOBILE_TABS = [
 
 export function AppShell() {
   const { state, update } = useStore();
-  const { signOut } = useLive();
+  const { signOut, user } = useLive();
   const jobsVersion = useJobsVersion();
   const { theme, toggle } = useTheme();
   const nav = useNavigate();
@@ -177,8 +177,8 @@ export function AppShell() {
 
   useEffect(() => {
     if (!state.authed) nav("/login", { replace: true });
-    else if (!state.onboarded) nav("/onboarding", { replace: true });
-  }, [state.authed, state.onboarded, nav]);
+    else if (!state.onboarded || user?.is_anonymous) nav("/onboarding", { replace: true });
+  }, [state.authed, state.onboarded, user, nav]);
 
   // Real accounts start with one empty conversation so Wren is ready to talk.
   useEffect(() => {

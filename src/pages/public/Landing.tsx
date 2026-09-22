@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PricingTiers } from "@/components/PricingTiers";
 import { CompanyLogo, ScoreRing } from "@/components/common";
 import { LegitBadgeView, MethodBadge, Pill, SampleTag } from "@/components/status";
+import { ALLOW_DEMO } from "@/live/supabase";
 import { demoJobById as jobById, DEMO_JOBS as JOBS } from "@/data/jobs";
 import { useDocTitle } from "@/hooks/useDocTitle";
 import { useStore } from "@/store/AppStore";
@@ -209,7 +210,6 @@ export default function Landing() {
   useDocTitle("");
   const nav = useNavigate();
   const { update } = useStore();
-  const ghostCount = JOBS.filter((j) => j.legit.badge === "ghost").length;
 
   const startPro = () => nav("/signup?plan=pro");
 
@@ -232,24 +232,26 @@ export default function Landing() {
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button size="lg" asChild>
-                <Link to="/signup">
+                <Link to="/onboarding">
                   Start free <ArrowRight />
                 </Link>
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => {
-                  update((s) => {
-                    s.mode = "demo";
-                    s.authed = true;
-                    s.onboarded = true;
-                  });
-                  nav("/app");
-                }}
-              >
-                Explore the demo account
-              </Button>
+              {ALLOW_DEMO && (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => {
+                    update((s) => {
+                      s.mode = "demo";
+                      s.authed = true;
+                      s.onboarded = true;
+                    });
+                    nav("/app");
+                  }}
+                >
+                  Explore the demo account
+                </Button>
+              )}
             </div>
             <p className="mt-4 text-sm text-muted-foreground">Free forever plan. Pro is $24 a month, or $180 a year. No card needed to start.</p>
           </div>
@@ -333,7 +335,7 @@ export default function Landing() {
               id="shield"
               eyebrow="3. Real listings only"
               title="Know which jobs are real before you spend an evening on them."
-              body={`Before a listing reaches you we look for it on the employer's own careers page and check how long it has been circulating. In our sample feed, ${ghostCount} of ${JOBS.length} listings do not survive that check and are left out.`}
+              body={`Before a listing reaches you we look for it on the employer's own careers page and check how long it has been circulating. Listings that fail that check are left out before you ever see them.`}
               points={["Verified Live means we found it on the company's own careers page in the last 24 hours", "Every listing carries a plain label, and the signals behind it are on the page", "A View company site button on every listing"]}
               visual={<ShieldVisual />}
             />
@@ -382,7 +384,8 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Testimonials */}
+      {/* Testimonials. Only real ones belong here, so the sample ones show only in a demo. */}
+      {ALLOW_DEMO && (
       <section>
         <div className="container py-16">
           <div className="mx-auto mb-10 max-w-2xl text-center">
@@ -403,6 +406,7 @@ export default function Landing() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Pricing */}
       <section id="pricing" className="scroll-mt-16 border-t bg-canvas">
@@ -428,8 +432,8 @@ export default function Landing() {
           <p className="mx-auto mt-3 max-w-xl text-muted-foreground">Setup takes about five minutes. You will see your first matches, with honest scores, before you finish your coffee.</p>
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <Button size="lg" asChild>
-              <Link to="/signup">
-                Create a free account <ArrowRight />
+              <Link to="/onboarding">
+                Get started free <ArrowRight />
               </Link>
             </Button>
             <Button size="lg" variant="ghost" asChild>

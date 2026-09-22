@@ -39,7 +39,7 @@ export default function Pricing() {
             <h1 className="font-display text-4xl font-semibold sm:text-5xl text-balance">One price, everything included.</h1>
             <p className="mt-4 text-lg text-muted-foreground">We do not sell the interview questions separately. No countdown timers, no hidden tiers, no surprise charges.</p>
           </div>
-          <PricingTiers onFree={() => nav("/signup")} onPro={() => nav("/signup?plan=pro")} />
+          <PricingTiers onFree={() => nav("/onboarding")} onPro={() => nav("/signup?plan=pro")} />
         </div>
       </section>
 

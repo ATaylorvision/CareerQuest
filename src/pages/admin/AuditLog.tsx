@@ -18,6 +18,7 @@ const ACTION_LABEL: Record<string, { label: string; tone: string }> = {
   "onboarding.reset": { label: "Reset onboarding", tone: "bg-muted text-muted-foreground" },
   "account.delete": { label: "Deleted an account", tone: "bg-danger/15 text-danger" },
   "setting.change": { label: "Changed a setting", tone: "bg-primary-soft text-primary" },
+  "guests.clean": { label: "Removed old guests", tone: "bg-muted text-muted-foreground" },
 };
 
 function describe(r: Row) {

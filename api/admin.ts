@@ -123,7 +123,8 @@ async function listUsers(q: string, page: number) {
 async function userDetail(userId: string) {
   if (!userId) throw new HttpError(400, "Which user?");
   const db = admin();
-  const [profile, apps, matches, resumes, letters, versions, events] = await Promise.all([
+  const month = `${new Date().toISOString().slice(0, 7)}-01`;
+  const [profile, apps, matches, resumes, letters, versions, events, usage] = await Promise.all([
     db.from("profiles").select("*").eq("id", userId).maybeSingle(),
     db
       .from("applications")
@@ -136,6 +137,7 @@ async function userDetail(userId: string) {
     db.from("cover_letters").select("id", { count: "exact", head: true }).eq("user_id", userId),
     db.from("resume_versions").select("id", { count: "exact", head: true }).eq("user_id", userId),
     db.from("application_events").select("type, note, occurred_at").eq("user_id", userId).order("occurred_at", { ascending: false }).limit(20),
+    db.from("usage_counters").select("tailored_resumes, cover_letters, copilot_messages").eq("user_id", userId).eq("month", month).maybeSingle(),
   ]);
   if (!profile.data) throw new HttpError(404, "That account no longer exists.");
 
@@ -147,6 +149,8 @@ async function userDetail(userId: string) {
     matches: matches.data ?? [],
     resumes: resumes.data ?? [],
     counts: { letters: letters.count ?? 0, versions: versions.count ?? 0 },
+    // What they have used this month, from the same counters their plan is enforced against.
+    usage: { tailoredResumes: usage.data?.tailored_resumes ?? 0, coverLetters: usage.data?.cover_letters ?? 0, copilotMessages: usage.data?.copilot_messages ?? 0, freeLimit: 3 },
     events: events.data ?? [],
   };
 }
@@ -382,6 +386,24 @@ async function setLinkedin(actor: AdminUser, on: boolean) {
   return linkedinStatus();
 }
 
+/** Guests who started setup and never signed up, and how many of them are old enough to remove. */
+async function guestStatus() {
+  const db = admin();
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const [{ count: total }, { count: stale }] = await Promise.all([
+    db.from("profiles").select("id", { count: "exact", head: true }).eq("is_guest", true),
+    db.from("profiles").select("id", { count: "exact", head: true }).eq("is_guest", true).lt("created_at", weekAgo),
+  ]);
+  return { guests: total ?? 0, stale: stale ?? 0 };
+}
+
+async function cleanGuests(actor: AdminUser) {
+  const { data, error } = await admin().rpc("delete_stale_guests", { days: 7 });
+  if (error) throw new HttpError(500, "Could not remove old guests.");
+  await logAction(actor, "guests.clean", { id: "guests", label: "Old guest accounts", detail: { removed: data } });
+  return { removed: (data as number) ?? 0, ...(await guestStatus()) };
+}
+
 export default route(async (req) => {
   const actor = await requireAdmin(req);
   const p = body<Payload>(req);
@@ -404,6 +426,10 @@ export default route(async (req) => {
       return listApplications(page);
     case "health":
       return health();
+    case "guests":
+      return guestStatus();
+    case "cleanGuests":
+      return cleanGuests(actor);
     case "linkedin":
       return linkedinStatus();
     case "setLinkedin":

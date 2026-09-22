@@ -1,28 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Award,
-  Briefcase,
-  CheckCircle2,
-  FileUp,
-  Flame,
-  GraduationCap,
-  Leaf,
-  Plus,
-  RefreshCcw,
-  Rocket,
-  Sparkles,
-  Trash2,
-  Undo2,
-  UserRound,
-  X,
-  Zap,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Award, Briefcase, CheckCircle2, FileUp, Flame, GraduationCap, Leaf, Loader2, Plus, RefreshCcw, Trash2, Undo2, UserRound, X, Zap } from "lucide-react";
 import { AiWorking, Chip, Logo, Segmented, SkeletonLines } from "@/components/common";
-import { JobCard } from "@/components/JobCard";
+import { PlacePicker } from "@/components/PlacePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,33 +14,41 @@ import { useStore, type Situation } from "@/store/AppStore";
 import { BASE_RESUME, setBaseResume, type Resume } from "@/data/user";
 import { api, fileToBase64 } from "@/live/api";
 import { supabase } from "@/live/supabase";
+import { saveConfirmedPlace } from "@/live/place";
 import { BASE_VERSION, useLive } from "@/live/LiveProvider";
 import { ResumeBuilder } from "./ResumeBuilder";
-import { TemplatePicker } from "@/components/TemplatePicker";
-import { RESUME_TEMPLATES, renderResumeHtml } from "@/data/resumeTemplates";
-import { LiveStepResults, LiveStepTranslator } from "./LiveSteps";
-import { BULLET_TRANSLATIONS, OTHER_FIELD_SAMPLES, PREVIOUS_FIELDS, TARGET_FIELDS, translateFreeText } from "@/data/translator";
+import { LiveStepDesign, LiveStepResults, LiveStepTranslator } from "./LiveSteps";
+import { TARGET_FIELDS } from "@/data/translator";
 import { INTENSITY_META, type Intensity } from "@/data/plan";
-import { JOBS, type TargetField } from "@/data/jobs";
 import { cn } from "@/lib/utils";
 import { useDocTitle } from "@/hooks/useDocTitle";
-import { LegitBadgeView } from "@/components/status";
+import type { TargetField } from "@/data/jobs";
 
-const STEPS = ["Resume", "Situation", "Translator", "Targets", "Pace", "Matches"];
+const STEPS = ["Resume", "Career", "Translator", "Targets", "Pace", "Matches"];
 
+/**
+ * Setup. Anyone can start it: a visitor gets a temporary guest account behind the scenes, and when they
+ * sign up to download their first resume that same account becomes theirs, so nothing has to be moved.
+ */
 export default function Onboarding() {
   useDocTitle("Set up");
   const { state, update } = useStore();
   const nav = useNavigate();
+  const { phase, user, flushProfile } = useLive();
   const [step, setStep] = useState(0);
-  const [parsed, setParsed] = useState<Resume | null>(state.uploadedFileName ? structuredClone(BASE_RESUME) : null);
-  const live = state.mode === "live";
-  const { flushProfile } = useLive();
+  const [parsed, setParsed] = useState<Resume | null>(state.uploadedFileName && BASE_RESUME.roles.length ? structuredClone(BASE_RESUME) : null);
   const [saving, setSaving] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const started = useRef(false);
 
+  // No account yet? Make a guest one, so the visitor can try the real thing before signing up.
   useEffect(() => {
-    if (!state.authed) nav("/signup", { replace: true });
-  }, [state.authed, nav]);
+    if (phase !== "ready" || user || started.current || !supabase) return;
+    started.current = true;
+    void supabase.auth.signInAnonymously().then(({ error }) => {
+      if (error) setUnavailable(true);
+    });
+  }, [phase, user]);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -67,55 +56,88 @@ export default function Onboarding() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [step]);
 
-  // A remote only search needs no place at all, so only ask for one when a
-  // commute is actually on the table.
-  const hasSomewhere = state.prefs.remote === "remote" || !!state.profile.location.trim() || state.prefs.locations.length > 0;
-  const canNext = step === 0 ? !!parsed : step === 3 && live ? state.prefs.roles.length > 0 && hasSomewhere : true;
+  const hasRoles = state.prefs.roles.length > 0;
+  const hasSomewhere = state.prefs.remote === "remote" || !!state.profile.locationConfirmed;
+  const other = state.prefs.targetOther;
+  const canNext = step === 0 ? !!parsed && !!state.profile.locationConfirmed && parsed.roles.length > 0 : step === 1 ? other === undefined || other.trim().length >= 3 : step === 3 ? hasRoles && hasSomewhere : true;
   const pct = Math.round((step / (STEPS.length - 1)) * 100);
 
-  /** Writes the resume, including any education and certifications the user corrected. */
+  /** Writes the resume, including any education, certifications and licenses the person added. */
   const saveResume = async (r: Resume) => {
     setBaseResume(r);
     if (!supabase) return;
-    const { data } = await supabase.from("resumes").update({ parsed: r, updated_at: new Date().toISOString() }).eq("is_base", true).select("id");
+    const uid = (await supabase.auth.getUser()).data.user?.id;
+    if (!uid) return;
+    const { data } = await supabase.from("resumes").update({ parsed: r, updated_at: new Date().toISOString() }).eq("user_id", uid).eq("is_base", true).select("id");
     // Someone who built their resume here has no row yet, because nothing was uploaded.
-    if (!data?.length) {
-      const uid = (await supabase.auth.getUser()).data.user?.id;
-      if (uid) await supabase.from("resumes").insert({ user_id: uid, file_name: state.uploadedFileName ?? "Built in CareerQuest", parsed: r, is_base: true });
-    }
+    if (!data?.length) await supabase.from("resumes").insert({ user_id: uid, file_name: state.uploadedFileName ?? "Built in CareerQuest", parsed: r, is_base: true });
   };
 
   const goNext = async () => {
-    if (live && step === 0 && parsed) {
+    if (step === 0 && parsed) {
       setSaving(true);
-      await saveResume(parsed);
-      // Prefill from the resume so the later steps are corrections, not data entry.
+      // The summary is written for them from what they did, so nobody starts from a blank box.
+      let next = parsed;
+      try {
+        const out = await api<{ summary: string }>("studio", { action: "summary", resume: { summary: "", skills: parsed.skills, roles: parsed.roles.map((r) => ({ id: r.id, title: r.title, company: r.company, bullets: r.bullets.map((b) => ({ id: b.id, text: b.text })) })) }, target: state.prefs.targetOther ?? "" });
+        if (out.summary) next = { ...parsed, summary: out.summary };
+      } catch {
+        /* the summary is a nicety; setup goes on without it */
+      }
+      setParsed(next);
+      await saveResume(next);
       update((s) => {
-        if (!s.profile.location && parsed.location) s.profile.location = parsed.location;
-        if (!s.profile.name && parsed.name) s.profile.name = parsed.name;
-        if (!s.profile.headline && parsed.roles[0]?.title) s.profile.headline = parsed.roles[0].title;
-        if (s.prefs.roles.length === 0) {
-          const titles = parsed.roles.map((r) => r.title.trim()).filter(Boolean);
-          s.prefs.roles = Array.from(new Set(titles)).slice(0, 3);
-        }
+        if (!s.profile.name && next.name) s.profile.name = next.name;
+        if (!s.profile.headline && next.roles[0]?.title) s.profile.headline = next.roles[0].title;
+        if (s.prefs.roles.length === 0) s.prefs.roles = Array.from(new Set(next.roles.map((r) => r.title.trim()).filter(Boolean))).slice(0, 3);
       });
       setSaving(false);
     }
-    // Education and certifications are edited on the targets step, so save again.
-    if (live && step === 3 && parsed) {
+    if (step === 2 && parsed) {
+      // Edits made on the design step are saved with everything else.
       setSaving(true);
       await saveResume(parsed);
       setSaving(false);
     }
-    if (live && step >= 1) await flushProfile();
+    if (step >= 1) await flushProfile();
     setStep(step + 1);
   };
 
   const finish = () => {
     update((s) => void (s.onboarded = true));
-    toast.success("You are all set.", { description: "Here is your plan for today." });
     nav("/app");
   };
+
+  if (unavailable && !user) {
+    return (
+      <div className="min-h-screen bg-canvas">
+        <main className="mx-auto max-w-md px-4 py-20 text-center">
+          <Logo to="/" />
+          <h1 className="mt-8 font-display text-3xl font-semibold">Let us set up your account first</h1>
+          <p className="mt-2 text-muted-foreground">We could not start a quick setup for you just now. Create your free account, and you can carry straight on.</p>
+          <Button asChild size="lg" className="mt-6">
+            <Link to="/signup">Create my free account</Link>
+          </Button>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Already have one?{" "}
+            <Link to="/login" className="font-medium text-primary hover:underline">
+              Log in
+            </Link>
+          </p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!user || !state.authed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas" role="status">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> Getting things ready
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -154,11 +176,12 @@ export default function Onboarding() {
       <main className="mx-auto max-w-4xl px-4 py-8 sm:py-10">
         <div key={step} className="page-enter">
           {step === 0 && <StepResume headingRef={headingRef} parsed={parsed} setParsed={setParsed} />}
-          {step === 1 && <StepSituation headingRef={headingRef} />}
-          {step === 2 && (live ? <LiveStepTranslator headingRef={headingRef} onBack={() => setStep(1)} /> : <StepTranslator headingRef={headingRef} />)}
-          {step === 3 && <StepTargets headingRef={headingRef} parsed={parsed} setParsed={setParsed} />}
+          {step === 1 && <StepCareer headingRef={headingRef} />}
+          {step === 2 && <LiveStepTranslator headingRef={headingRef} onBack={() => setStep(1)} />}
+          {step === 2 && parsed && <LiveStepDesign resume={parsed} setResume={setParsed} />}
+          {step === 3 && <StepTargets headingRef={headingRef} />}
           {step === 4 && <StepIntensity headingRef={headingRef} />}
-          {step === 5 && (live ? <LiveStepResults headingRef={headingRef} onFinish={finish} /> : <StepResults headingRef={headingRef} onFinish={finish} />)}
+          {step === 5 && <LiveStepResults headingRef={headingRef} onFinish={finish} />}
         </div>
 
         {step < 5 && (
@@ -166,9 +189,13 @@ export default function Onboarding() {
             <Button variant="ghost" onClick={() => (step === 0 ? nav("/") : setStep(step - 1))}>
               <ArrowLeft /> {step === 0 ? "Exit" : "Back"}
             </Button>
-            <Button size="lg" disabled={!canNext || saving} onClick={() => void goNext()}>
-              {step === 4 ? "Find my matches" : "Continue"} <ArrowRight />
-            </Button>
+            <div className="flex items-center gap-3">
+              {step === 0 && parsed && !state.profile.locationConfirmed && <span className="hidden text-xs text-warning sm:inline">Confirm where you live to continue</span>}
+              <Button size="lg" disabled={!canNext || saving} onClick={() => void goNext()}>
+                {saving ? <Loader2 className="animate-spin" /> : null}
+                {step === 4 ? "Find my matches" : "Continue"} <ArrowRight />
+              </Button>
+            </div>
           </div>
         )}
       </main>
@@ -178,18 +205,20 @@ export default function Onboarding() {
 
 type HRef = { headingRef: React.RefObject<HTMLHeadingElement> };
 
-function StepHeading({ headingRef, title, sub }: HRef & { title: string; sub: string }) {
+function StepHeading({ headingRef, title, sub }: HRef & { title: string; sub?: string }) {
   return (
     <div className="mb-7">
       <h1 ref={headingRef} tabIndex={-1} className="font-display text-3xl font-semibold outline-none sm:text-4xl text-balance">
         {title}
       </h1>
-      <p className="mt-2 max-w-2xl text-muted-foreground">{sub}</p>
+      {sub && <p className="mt-2 max-w-2xl text-muted-foreground">{sub}</p>}
     </div>
   );
 }
 
 /* ---------------- Step 1: resume ---------------- */
+
+const newId = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume | null; setParsed: (r: Resume | null) => void }) {
   const { state, update } = useStore();
@@ -198,14 +227,20 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
   const [parsing, setParsing] = useState<string | null>(null);
   const [newSkill, setNewSkill] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  const live = state.mode === "live";
 
-  const start = (name: string) => {
-    setParsed(null);
-    setParsing(name);
+  const confirmPlace = async (p: { label: string; lat: number; lng: number }): Promise<void> => {
+    const ok = await saveConfirmedPlace({ ...p, detail: "" });
+    if (!ok) {
+      toast.error("We could not save that place. Please try again.");
+      return;
+    }
+    update((s) => {
+      s.profile.location = p.label;
+      s.profile.locationConfirmed = true;
+    });
+    if (parsed) setParsed({ ...parsed, location: p.label });
   };
 
-  // Real parsing: Claude reads the actual file on our server.
   const parseReal = async (f: File) => {
     if (f.size > 3_000_000) {
       toast.error("That file is over 3 MB", { description: "Try a smaller PDF or Word file." });
@@ -222,7 +257,6 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
       update((s) => {
         s.uploadedFileName = f.name;
         if (!s.profile.name) s.profile.name = r.name;
-        if (!s.profile.location) s.profile.location = r.location;
         if (!s.prefs.prevField && r.current_field) s.prefs.prevField = r.current_field;
         s.resume.versions = [{ ...BASE_VERSION }, ...s.resume.versions.filter((v) => v.id !== "v-base")];
         s.resume.activeVersionId = "v-base";
@@ -237,28 +271,16 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
   const onFiles = (files: FileList | null) => {
     const f = files?.[0];
     if (!f) return;
-    if (!(live ? /\.(pdf|docx|txt)$/i : /\.(pdf|docx?|txt|rtf)$/i).test(f.name)) {
-      toast.error("That file type will not work", { description: live ? "Use a PDF, a Word .docx, or a plain text file." : "Use a PDF, Word document, or plain text file." });
+    if (!/\.(pdf|docx|txt)$/i.test(f.name)) {
+      toast.error("That file type will not work", { description: "Use a PDF, a Word .docx, or a plain text file." });
       return;
     }
-    if (live) void parseReal(f);
-    else start(f.name);
+    void parseReal(f);
   };
 
-  const setField = (k: "name" | "email" | "phone" | "location" | "summary", v: string) => setParsed({ ...parsed!, [k]: v });
-  const setBullet = (ri: number, bi: number, v: string) => {
+  const edit = (fn: (r: Resume) => void) => {
     const r = structuredClone(parsed!);
-    r.roles[ri].bullets[bi].text = v;
-    setParsed(r);
-  };
-  const removeBullet = (ri: number, bi: number) => {
-    const r = structuredClone(parsed!);
-    r.roles[ri].bullets.splice(bi, 1);
-    setParsed(r);
-  };
-  const setRole = (ri: number, k: "title" | "company" | "start" | "end", v: string) => {
-    const r = structuredClone(parsed!);
-    r.roles[ri][k] = v;
+    fn(r);
     setParsed(r);
   };
 
@@ -267,11 +289,7 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
       <StepHeading
         headingRef={headingRef}
         title="Start with your resume"
-        sub={
-          building
-            ? "No file needed. Answer what you can, in your own words. We will only ever use what you put here."
-            : "We read it once, then show you exactly what we found. Fix anything we got wrong. We will only ever use what is here."
-        }
+        sub={building ? "No file needed. Answer what you can, in your own words. We will only ever use what you put here." : "We read it once, then show you exactly what we found. Fix anything we got wrong. We will only ever use what is here."}
       />
 
       {building && !parsed && (
@@ -284,7 +302,6 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
             update((s) => {
               s.uploadedFileName = "Built in CareerQuest";
               if (!s.profile.name) s.profile.name = r.name;
-              if (!s.profile.location) s.profile.location = r.location;
               s.resume.versions = [{ ...BASE_VERSION }, ...s.resume.versions.filter((v) => v.id !== "v-base")];
               s.resume.activeVersionId = "v-base";
             });
@@ -304,48 +321,27 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
             setDrag(false);
             onFiles(e.dataTransfer.files);
           }}
-          className={cn(
-            "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-background px-6 py-14 text-center transition-all",
-            drag ? "scale-[1.01] border-primary bg-primary-soft" : "border-input hover:border-primary/50",
-          )}
+          className={cn("flex flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-background px-6 py-14 text-center transition-all", drag ? "scale-[1.01] border-primary bg-primary-soft" : "border-input hover:border-primary/50")}
         >
           <div className={cn("mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-soft text-primary transition-transform", drag && "scale-110")}>
             <FileUp className="h-7 w-7" />
           </div>
           <div className="text-lg font-semibold">{drag ? "Drop it here" : "Drag your resume here"}</div>
-          <p className="mt-1 text-sm text-muted-foreground">{live ? "PDF, Word (.docx), or plain text. Up to 3 MB." : "PDF, Word, or plain text. Up to 5 MB."}</p>
+          <p className="mt-1 text-sm text-muted-foreground">PDF, Word (.docx), or plain text. Up to 3 MB.</p>
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
             <Button onClick={() => input.current?.click()}>Choose a file</Button>
-            {!live && (
-              <Button variant="outline" onClick={() => start("Renee_Castillo_Resume.pdf")}>
-                Use the sample resume
-              </Button>
-            )}
             <Button variant="outline" onClick={() => setBuilding(true)}>
               I do not have one yet
             </Button>
           </div>
-          <input ref={input} type="file" accept={live ? ".pdf,.docx,.txt" : ".pdf,.doc,.docx,.txt,.rtf"} className="sr-only" onChange={(e) => onFiles(e.target.files)} aria-label="Upload resume file" />
-          <p className="mt-5 max-w-md text-xs text-muted-foreground">
-            {live ? "Your resume is read by AI, saved privately to your account, and never shown to an employer unless you apply." : "Prototype: any file you choose stays in your browser. We parse the sample resume for Renee Castillo so the rest of the product has real material to work with."}
-          </p>
+          <input ref={input} type="file" accept=".pdf,.docx,.txt" className="sr-only" onChange={(e) => onFiles(e.target.files)} aria-label="Upload resume file" />
+          <p className="mt-5 max-w-md text-xs text-muted-foreground">Your resume is read by AI and saved privately. It is never shown to an employer unless you apply.</p>
         </div>
       )}
 
       {parsing && (
         <div className="card-base grid grid-cols-1 gap-8 p-6 sm:grid-cols-[1fr_1.2fr]">
-          <AiWorking
-            title={`Reading ${parsing}`}
-            steps={["Opening the file", "Finding roles, companies, and dates", "Pulling out each bullet point", "Collecting skills and certifications", "Double checking numbers"]}
-            stepMs={live ? 2600 : 520}
-            hold={live}
-            onDone={() => {
-              if (live) return;
-              setParsed(structuredClone(BASE_RESUME));
-              update((s) => void (s.uploadedFileName = parsing));
-              setParsing(null);
-            }}
-          />
+          <AiWorking title={`Reading ${parsing}`} steps={["Opening the file", "Finding roles, companies, and dates", "Pulling out each bullet point", "Collecting skills, education and certifications", "Double checking numbers"]} stepMs={2600} hold />
           <div className="space-y-4">
             <SkeletonLines lines={2} />
             <SkeletonLines lines={5} />
@@ -359,64 +355,71 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
           <div className="flex flex-col gap-3 rounded-xl border border-success-border bg-success-soft p-4 sm:flex-row sm:items-center">
             <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
             <div className="flex-1 text-sm">
-              <span className="font-semibold text-success">Parsed {state.uploadedFileName ?? "your resume"}.</span> We found {parsed.roles.length} role{parsed.roles.length === 1 ? "" : "s"}, {parsed.roles.reduce((n, r) => n + r.bullets.length, 0)} bullet points, {parsed.skills.length} skill{parsed.skills.length === 1 ? "" : "s"}, and {parsed.certifications.length} certification{parsed.certifications.length === 1 ? "" : "s"}. Everything below is editable. Fix anything we got wrong.
+              <span className="font-semibold text-success">Read {state.uploadedFileName ?? "your resume"}.</span> We found {parsed.roles.length} job{parsed.roles.length === 1 ? "" : "s"}, {parsed.roles.reduce((n, r) => n + r.bullets.length, 0)} lines, {parsed.skills.length} skill{parsed.skills.length === 1 ? "" : "s"}, {parsed.education.length} education entr{parsed.education.length === 1 ? "y" : "ies"} and {parsed.certifications.length} certification{parsed.certifications.length === 1 ? "" : "s"} or license{parsed.certifications.length === 1 ? "" : "s"}. Everything below can be changed.
             </div>
             <Button variant="outline" size="sm" onClick={() => setParsed(null)}>
-              <RefreshCcw /> Upload a different file
+              <RefreshCcw /> Use a different file
             </Button>
           </div>
 
-          <div className="card-base p-5 sm:p-6">
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Contact</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {(["name", "email", "phone", "location"] as const).map((k) => (
+          <div className="card-base space-y-5 p-5 sm:p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">You</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {(["name", "email", "phone"] as const).map((k) => (
                 <div key={k} className="space-y-1.5">
                   <Label htmlFor={`p-${k}`} className="capitalize">
                     {k}
                   </Label>
-                  <Input id={`p-${k}`} value={parsed[k]} onChange={(e) => setField(k, e.target.value)} />
+                  <Input id={`p-${k}`} value={parsed[k]} onChange={(e) => edit((r) => void (r[k] = e.target.value))} />
                 </div>
               ))}
             </div>
-            <div className="mt-4 space-y-1.5">
-              <Label htmlFor="p-summary">Summary</Label>
-              <Textarea id="p-summary" rows={3} value={parsed.summary} onChange={(e) => setField("summary", e.target.value)} />
-            </div>
+            <PlacePicker prominent value={state.profile.location} confirmed={!!state.profile.locationConfirmed} onConfirm={confirmPlace} label="Where do you live?" />
           </div>
+
+          {/* The summary is not asked for. We write it from what follows. */}
 
           {parsed.roles.map((r, ri) => (
             <div key={r.id} className="card-base p-5 sm:p-6">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.4fr_1.2fr_0.7fr_0.7fr]">
-                <div className="space-y-1.5">
-                  <Label htmlFor={`${r.id}-t`}>Title</Label>
-                  <Input id={`${r.id}-t`} value={r.title} onChange={(e) => setRole(ri, "title", e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor={`${r.id}-c`}>Company</Label>
-                  <Input id={`${r.id}-c`} value={r.company} onChange={(e) => setRole(ri, "company", e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor={`${r.id}-s`}>Start</Label>
-                  <Input id={`${r.id}-s`} value={r.start} onChange={(e) => setRole(ri, "start", e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor={`${r.id}-e`}>End</Label>
-                  <Input id={`${r.id}-e`} value={r.end} onChange={(e) => setRole(ri, "end", e.target.value)} />
-                </div>
+                {(
+                  [
+                    ["title", "Title"],
+                    ["company", "Company"],
+                    ["start", "Start"],
+                    ["end", "End"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <div key={k} className="space-y-1.5">
+                    <Label htmlFor={`${r.id}-${k}`}>{label}</Label>
+                    <Input id={`${r.id}-${k}`} value={r[k]} onChange={(e) => edit((x) => void (x.roles[ri][k] = e.target.value))} />
+                  </div>
+                ))}
               </div>
               <div className="mt-4 space-y-2">
                 {r.bullets.map((b, bi) => (
                   <div key={b.id} className="group flex items-start gap-2">
                     <span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
-                    <Textarea aria-label={`Bullet ${bi + 1} for ${r.title}`} rows={2} value={b.text} onChange={(e) => setBullet(ri, bi, e.target.value)} className="min-h-0 resize-none text-sm" />
-                    <Button variant="ghost" size="icon-sm" className="mt-1 opacity-60 group-hover:opacity-100" onClick={() => removeBullet(ri, bi)} aria-label="Remove bullet">
+                    <Textarea aria-label={`Line ${bi + 1} for ${r.title}`} rows={2} value={b.text} onChange={(e) => edit((x) => void (x.roles[ri].bullets[bi].text = e.target.value))} className="min-h-0 resize-none text-sm" />
+                    <Button variant="ghost" size="icon-sm" className="mt-1 opacity-60 group-hover:opacity-100" onClick={() => edit((x) => void x.roles[ri].bullets.splice(bi, 1))} aria-label="Remove this line">
                       <Trash2 />
                     </Button>
                   </div>
                 ))}
               </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => edit((x) => void x.roles[ri].bullets.push({ id: newId("nb"), text: "" }))}>
+                  <Plus /> Add a line about this job
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => edit((x) => void x.roles.splice(ri, 1))}>
+                  <Trash2 /> Remove this job
+                </Button>
+              </div>
             </div>
           ))}
+          <Button variant="outline" onClick={() => edit((x) => void x.roles.push({ id: newId("role"), title: "", company: "", location: "", start: "", end: "", bullets: [{ id: newId("nb"), text: "" }] }))}>
+            <Briefcase /> Add a job
+          </Button>
 
           <div className="card-base p-5 sm:p-6">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Skills</h2>
@@ -424,7 +427,7 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
               {parsed.skills.map((s) => (
                 <span key={s} className="inline-flex items-center gap-1 rounded-full border bg-muted/50 py-1 pl-3 pr-1 text-sm">
                   {s}
-                  <button onClick={() => setParsed({ ...parsed, skills: parsed.skills.filter((x) => x !== s) })} className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground" aria-label={`Remove ${s}`}>
+                  <button onClick={() => edit((x) => void (x.skills = x.skills.filter((y) => y !== s)))} className="rounded-full p-1 text-muted-foreground hover:bg-background hover:text-foreground" aria-label={`Remove ${s}`}>
                     <X className="h-3 w-3" />
                   </button>
                 </span>
@@ -434,7 +437,7 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
               className="mt-3 flex gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (newSkill.trim()) setParsed({ ...parsed, skills: [...parsed.skills, newSkill.trim()] });
+                if (newSkill.trim()) edit((x) => void x.skills.push(newSkill.trim()));
                 setNewSkill("");
               }}
             >
@@ -443,28 +446,14 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
                 <Plus /> Add
               </Button>
             </form>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Certifications found: {parsed.certifications.join(", ")}. Education: {parsed.education.join(", ")}.
-            </p>
           </div>
 
-          {/* Seeing the page now, rather than after the first tailoring, is what
-              makes the rest of setup feel like it is about a real document. */}
-          <div className="card-base p-5 sm:p-6">
-            <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground">How it will look</h2>
-            <p className="mb-4 text-sm text-muted-foreground">Your own words in each layout. Every one is plain enough for screening software to read. You can change this any time.</p>
-            <TemplatePicker
-              label="Page layout"
-              items={RESUME_TEMPLATES.map((t) => ({
-                id: t.id,
-                name: t.name,
-                blurb: t.blurb,
-                bestFor: t.bestFor,
-                html: renderResumeHtml({ ...parsed, certsOwnSection: parsed.certifications.length > 0, changedIds: new Set(), editedIds: new Set() }, t.id, t.name, state.profile.headline),
-              }))}
-              value={state.resume.templateId}
-              onChange={(id) => update((d) => void (d.resume.templateId = id))}
-            />
+          <div className="card-base grid grid-cols-1 gap-6 p-5 sm:p-6 md:grid-cols-2">
+            <LineEditor label="Education" icon={GraduationCap} values={parsed.education} onChange={(v) => edit((x) => void (x.education = v))} placeholder="Degree, school, year" />
+            <div>
+              <LineEditor label="Certifications and licenses" icon={Award} values={parsed.certifications} onChange={(v) => edit((x) => void (x.certifications = v))} placeholder="Certification or license, year" />
+              <p className="mt-2 text-xs text-muted-foreground">Professional licenses, safety cards, and software certificates all count. These often decide who gets called.</p>
+            </div>
           </div>
         </div>
       )}
@@ -472,188 +461,181 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
   );
 }
 
-/* ---------------- Step 2: situation ---------------- */
+/** A plain list of one line entries. Unlike TagEditor, these are sentences rather than chips. */
+function LineEditor({ label, icon: Icon, values, onChange, placeholder }: { label: string; icon: React.ComponentType<{ className?: string }>; values: string[]; onChange: (v: string[]) => void; placeholder: string }) {
+  const [v, setV] = useState("");
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Icon className="h-4 w-4 text-primary" />
+        {label}
+      </div>
+      {values.length === 0 && <p className="text-sm text-muted-foreground">Nothing found on your resume. Add anything you have.</p>}
+      <ul className="space-y-1.5">
+        {values.map((e, i) => (
+          <li key={`${e}-${i}`} className="flex items-start gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+            <span className="flex-1">{e}</span>
+            <button type="button" onClick={() => onChange(values.filter((_, j) => j !== i))} className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-danger" aria-label={`Remove ${e}`}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const t = v.trim();
+          if (t && !values.includes(t)) onChange([...values, t]);
+          setV("");
+        }}
+      >
+        <Input value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-9" />
+        <Button type="submit" variant="outline" size="sm">
+          <Plus /> Add
+        </Button>
+      </form>
+    </div>
+  );
+}
 
-const SITUATIONS: { id: Situation; title: string; body: string; adapts: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "changer", title: "Career changer", body: "I want to move into a different field.", adapts: "We lead with Career Translator and roles that do not require exact industry experience.", icon: RefreshCcw },
-  { id: "laidoff", title: "Recently laid off", body: "My role was cut and I am restarting.", adapts: "We help you move quickly, skip listings that are not real, and talk about the layoff with confidence.", icon: Undo2 },
-  { id: "employed", title: "Employed and looking", body: "I have a job but want something better.", adapts: "We keep things quiet and focused, with fewer, higher fit actions each day.", icon: Briefcase },
-  { id: "returning", title: "Returning to work", body: "I have been out for a while by choice.", adapts: "We help you frame the gap and refresh the skills employers screen for.", icon: UserRound },
+/* ---------------- Step 2: career ---------------- */
+
+const SITUATIONS: { id: Situation; title: string; body: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "changer", title: "Career changer", body: "I want to move into a different field.", icon: RefreshCcw },
+  { id: "laidoff", title: "Recently laid off", body: "My role was cut and I am restarting.", icon: Undo2 },
+  { id: "employed", title: "Employed and looking", body: "I have a job but want something better.", icon: Briefcase },
+  { id: "returning", title: "Returning to work", body: "I have been out for a while by choice.", icon: UserRound },
 ];
 
-function StepSituation({ headingRef }: HRef) {
+/** Careers people ask about that are not one of our five fields. Each maps to the nearest field so the translator has something to work with. */
+const CAREER_IDEAS: { label: string; closest: TargetField }[] = [
+  { label: "Human resources", closest: "program" },
+  { label: "Project management", closest: "project" },
+  { label: "Data analysis", closest: "program" },
+  { label: "Marketing", closest: "program" },
+  { label: "Product management", closest: "program" },
+  { label: "Sales", closest: "cs" },
+  { label: "Account management", closest: "cs" },
+  { label: "Recruiting", closest: "program" },
+  { label: "Finance and accounting", closest: "program" },
+  { label: "IT support", closest: "program" },
+  { label: "Education and training", closest: "program" },
+  { label: "Real estate", closest: "cs" },
+  { label: "Skilled trades", closest: "supply" },
+  { label: "Transportation and delivery", closest: "supply" },
+  { label: "Hospitality management", closest: "cs" },
+  { label: "Nonprofit and community work", closest: "program" },
+];
+
+const OTHER = "__other";
+
+function StepCareer({ headingRef }: HRef) {
   const { state, update } = useStore();
+  const p = state.prefs;
+  // An empty string means "something else" was chosen and the words have not been typed yet.
+  const showOther = p.targetOther !== undefined;
+
   return (
     <div>
-      <StepHeading headingRef={headingRef} title="What is your situation?" sub="There is no wrong answer. This changes what we show you first and how we talk to you." />
+      <StepHeading headingRef={headingRef} title="What is your situation, and where do you want to go?" />
       <div role="radiogroup" aria-label="Your situation" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {SITUATIONS.map((s) => {
-          const on = state.prefs.situation === s.id;
+          const on = p.situation === s.id;
           return (
-            <button
-              key={s.id}
-              role="radio"
-              aria-checked={on}
-              onClick={() => update((d) => void (d.prefs.situation = s.id))}
-              className={cn("card-base card-hover flex gap-4 p-5 text-left", on && "border-primary ring-2 ring-primary/20")}
-            >
+            <button key={s.id} role="radio" aria-checked={on} onClick={() => update((d) => void (d.prefs.situation = s.id))} className={cn("card-base card-hover flex gap-4 p-5 text-left", on && "border-primary ring-2 ring-primary/20")}>
               <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors", on ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
                 <s.icon className="h-5 w-5" />
               </span>
               <span>
                 <span className="block font-semibold">{s.title}</span>
                 <span className="block text-sm text-muted-foreground">{s.body}</span>
-                <span className={cn("mt-2 block text-xs transition-colors", on ? "text-primary" : "text-muted-foreground/80")}>{s.adapts}</span>
               </span>
             </button>
           );
         })}
       </div>
-      {state.prefs.situation === "laidoff" && (
-        <div className="mt-5 rounded-xl border bg-background p-4 text-sm animate-fade-up">
-          <span className="font-medium">A quick word.</span> <span className="text-muted-foreground">Layoffs are a business decision, not a verdict on you. Most people in your position land in four to six months. We will help you use that time well.</span>
+
+      <div className="card-base mt-5 space-y-5 p-5 sm:p-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
+          <div className="space-y-1.5">
+            <Label htmlFor="prev-field">I am coming from</Label>
+            <Input id="prev-field" value={p.prevField} onChange={(e) => update((d) => void (d.prefs.prevField = e.target.value))} placeholder="For example: retail operations" />
+          </div>
+          <ArrowRight className="mx-auto hidden h-5 w-5 text-primary sm:mb-2.5 sm:block" aria-hidden />
+          <div className="space-y-1.5">
+            <Label htmlFor="target-field">I want to move into</Label>
+            <Select
+              value={showOther ? OTHER : p.targetField}
+              onValueChange={(v) => {
+                if (v === OTHER) update((d) => void (d.prefs.targetOther = d.prefs.targetOther ?? ""));
+                else {
+                  update((d) => {
+                    d.prefs.targetField = v;
+                    d.prefs.targetOther = undefined;
+                  });
+                }
+              }}
+            >
+              <SelectTrigger id="target-field">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TARGET_FIELDS.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.label}
+                  </SelectItem>
+                ))}
+                <SelectItem value={OTHER}>Something else, I will tell you</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      )}
 
-      {/* Asked here, once. The next step shows what it does rather than asking again. */}
-      <div className="card-base mt-5 grid grid-cols-1 gap-4 p-5 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-        <div className="space-y-1.5">
-          <Label htmlFor="prev-field">I am coming from</Label>
-          <Input
-            id="prev-field"
-            value={state.prefs.prevField}
-            onChange={(e) => update((d) => void (d.prefs.prevField = e.target.value))}
-            placeholder="For example: retail operations"
-          />
-          <p className="text-xs text-muted-foreground">Read from your resume. Change it if it is not right.</p>
-        </div>
-        <ArrowRight className="mx-auto hidden h-5 w-5 text-primary sm:mb-8 sm:block" aria-hidden />
-        <div className="space-y-1.5">
-          <Label htmlFor="target-field">I want to move into</Label>
-          <Select value={state.prefs.targetField} onValueChange={(v) => update((d) => void (d.prefs.targetField = v))}>
-            <SelectTrigger id="target-field">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TARGET_FIELDS.map((f) => (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">This sets the language we translate your experience into.</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- Step 3: translator ---------------- */
-
-function StepTranslator({ headingRef }: HRef) {
-  const { state, update } = useStore();
-  const prev = state.prefs.prevField;
-  const target = state.prefs.targetField as TargetField;
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    const t = setTimeout(() => setLoading(false), 750);
-    return () => clearTimeout(t);
-  }, [prev, target]);
-
-  const rows = useMemo(() => {
-    const own = BASE_RESUME.roles.flatMap((r) => r.bullets);
-    // The scripted lines only exist for the sample resume. Someone who wrote
-    // their own here gets their own lines translated instead of a stranger's.
-    const scripted = ["r1", "r2", "r3"].map((id) => ({ id, b: own.find((x) => x.id === id) }));
-    if (prev === "retail" && scripted.every((x) => x.b)) {
-      return scripted.map(({ id, b }) => ({ from: b!.text, to: BULLET_TRANSLATIONS[id][target].phrases, mine: true }));
-    }
-    const sample = OTHER_FIELD_SAMPLES[prev];
-    if (sample) return sample.map((x) => ({ from: x.text, to: x.out[target], mine: false }));
-    return own
-      .slice(0, 3)
-      .map((b) => ({ from: b.text, to: translateFreeText(b.text), mine: true }))
-      .filter((r) => r.to.length > 0);
-  }, [prev, target]);
-
-  const targetMeta = TARGET_FIELDS.find((t) => t.id === target)!;
-
-  return (
-    <div>
-      <StepHeading headingRef={headingRef} title="Let us translate your experience" sub="Pick where you are coming from and where you want to go. Here is how your top three responsibilities read in that field." />
-      <div className="card-base mb-5 grid grid-cols-1 gap-4 p-5 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-        <div className="space-y-1.5">
-          <Label htmlFor="prev">I am coming from</Label>
-          <Select value={prev} onValueChange={(v) => update((d) => void (d.prefs.prevField = v))}>
-            <SelectTrigger id="prev">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PREVIOUS_FIELDS.map((f) => (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <ArrowRight className="mx-auto hidden h-5 w-5 text-primary sm:mb-2.5 sm:block" aria-hidden />
-        <div className="space-y-1.5">
-          <Label htmlFor="target">I want to move into</Label>
-          <Select value={target} onValueChange={(v) => update((d) => void (d.prefs.targetField = v))}>
-            <SelectTrigger id="target">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TARGET_FIELDS.map((f) => (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="space-y-3" aria-live="polite">
-        {rows.length === 0 && (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            Add a line or two about what you did on the previous step and we will show you how it reads in {targetMeta.label}.
-          </p>
-        )}
-        {rows.map((r, i) => (
-          <div key={r.from} className="grid grid-cols-1 gap-3 rounded-xl border bg-card p-4 shadow-card md:grid-cols-[1fr_auto_1.1fr] md:items-center md:p-5">
-            <div>
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{r.mine ? "From your resume" : "Sample responsibility"}</div>
-              <p className="text-sm">{r.from}</p>
+        {showOther && (
+          <div className="space-y-3 rounded-xl bg-muted/40 p-4 animate-fade-up">
+            <div className="space-y-1.5">
+              <Label htmlFor="target-other">What career are you looking to get into?</Label>
+              <Input id="target-other" value={p.targetOther ?? ""} onChange={(e) => update((d) => void (d.prefs.targetOther = e.target.value))} placeholder="For example: human resources, or data analysis" />
             </div>
-            <ArrowRight className="mx-auto h-4 w-4 rotate-90 text-primary md:rotate-0" aria-hidden />
             <div>
-              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-primary">{targetMeta.label} language</div>
-              {loading ? (
-                <div className="flex gap-2">
-                  <div className="skeleton h-7 w-40" />
-                  <div className="skeleton h-7 w-28" />
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {r.to.map((p, j) => (
-                    <span key={p} className="rounded-md bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary animate-pop" style={{ animationDelay: `${i * 120 + j * 60}ms` }}>
-                      {p}
-                    </span>
+              <div className="mb-1.5 text-xs font-medium text-muted-foreground">Or pick one that is close</div>
+              <div className="flex flex-wrap gap-2">
+                {CAREER_IDEAS.map((c) => (
+                  <Chip
+                    key={c.label}
+                    active={p.targetOther === c.label}
+                    onClick={() =>
+                      update((d) => {
+                        d.prefs.targetOther = c.label;
+                        d.prefs.targetField = c.closest;
+                      })
+                    }
+                  >
+                    {c.label}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="closest">Which of these is closest to it?</Label>
+              <Select value={p.targetField} onValueChange={(v) => update((d) => void (d.prefs.targetField = v))}>
+                <SelectTrigger id="closest">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TARGET_FIELDS.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.label}
+                    </SelectItem>
                   ))}
-                </div>
-              )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">This only decides the language we translate your experience into. Your own words are what we search for.</p>
             </div>
           </div>
-        ))}
+        )}
       </div>
-      <p className="mt-4 text-sm text-muted-foreground">
-        The full Career Translator sits in the Studio, beside your resume. It works with every line you have, and with anything you type.
-      </p>
     </div>
   );
 }
@@ -702,23 +684,19 @@ function TagEditor({ label, values, suggestions, onChange, placeholder }: { labe
   );
 }
 
-function StepTargets({ headingRef, parsed, setParsed }: HRef & { parsed: Resume | null; setParsed: (r: Resume) => void }) {
+function StepTargets({ headingRef }: HRef) {
   const { state, update } = useStore();
   const p = state.prefs;
+  const suggestions = [...(p.targetOther ? [p.targetOther] : []), ...(ROLE_SUGGESTIONS[p.targetField] ?? [])];
   return (
     <div>
-      <StepHeading
-        headingRef={headingRef}
-        title="What are you aiming for?"
-        sub="Most of this is already filled in from your resume. Correct anything that is wrong. You can change all of it later in Settings."
-      />
+      <StepHeading headingRef={headingRef} title="What are you aiming for?" sub="Most of this is already filled in from your resume. You can change all of it later in Settings." />
       <div className="space-y-5">
         <div className="card-base p-5 sm:p-6">
-          <TagEditor label="Target roles" values={p.roles} suggestions={ROLE_SUGGESTIONS[p.targetField] ?? []} onChange={(v) => update((d) => void (d.prefs.roles = v))} placeholder="Add a role title" />
+          <TagEditor label="Target roles" values={p.roles} suggestions={suggestions} onChange={(v) => update((d) => void (d.prefs.roles = v))} placeholder="Add a role title" />
         </div>
         <WhereBlock />
         <PayBlock />
-        <CredentialsBlock parsed={parsed} setParsed={setParsed} />
         <div className="card-base grid grid-cols-1 gap-6 p-5 sm:p-6 md:grid-cols-2">
           <TagEditor label="Must haves" values={p.mustHaves} suggestions={MUST_SUGGEST} onChange={(v) => update((d) => void (d.prefs.mustHaves = v))} placeholder="Add a must have" />
           <TagEditor label="Dealbreakers" values={p.dealbreakers} suggestions={DEAL_SUGGEST} onChange={(v) => update((d) => void (d.prefs.dealbreakers = v))} placeholder="Add a dealbreaker" />
@@ -728,17 +706,21 @@ function StepTargets({ headingRef, parsed, setParsed }: HRef & { parsed: Resume 
   );
 }
 
-/**
- * Where someone can actually work. A list of city names could never answer
- * "how far is too far", so the home address and a radius come first, and the
- * extra locations are for people who would move rather than commute.
- */
 function WhereBlock() {
   const { state, update } = useStore();
   const p = state.prefs;
-  const home = state.profile.location;
   const commutes = p.remote !== "remote";
   const anyDistance = p.maxDistanceMiles >= 100;
+  const confirmPlace = async (pl: { label: string; lat: number; lng: number }): Promise<void> => {
+    if (!(await saveConfirmedPlace({ ...pl, detail: "" }))) {
+      toast.error("We could not save that place. Please try again.");
+      return;
+    }
+    update((s) => {
+      s.profile.location = pl.label;
+      s.profile.locationConfirmed = true;
+    });
+  };
 
   return (
     <div className="card-base space-y-6 p-5 sm:p-6">
@@ -757,139 +739,67 @@ function WhereBlock() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="home-base">Home base</Label>
-          <Input id="home-base" value={home} onChange={(e) => update((d) => void (d.profile.location = e.target.value))} placeholder="City, State" />
-          <p className="text-xs text-muted-foreground">{home ? "Read from your resume. Commutes are measured from here." : "Add your city so we can measure commutes."}</p>
-        </div>
+        <PlacePicker value={state.profile.location} confirmed={!!state.profile.locationConfirmed} onConfirm={confirmPlace} label="Home base" />
 
         {commutes && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium" id="dist-label">
-                Furthest you would commute
+                Max distance
               </span>
               <span className="num font-semibold">{anyDistance ? "Any distance" : `${p.maxDistanceMiles} miles`}</span>
             </div>
             <Slider aria-labelledby="dist-label" value={[p.maxDistanceMiles]} min={5} max={100} step={5} onValueChange={([v]) => update((d) => void (d.prefs.maxDistanceMiles = v))} />
-            <p className="text-xs text-muted-foreground">
-              {/* About a mile a minute on open road, closer to two in town. */}
-              {anyDistance ? "Distance will not rule anything out." : `Roughly ${Math.max(10, Math.round(p.maxDistanceMiles * 1.1))} to ${Math.round(p.maxDistanceMiles * 1.8)} minutes each way, depending on traffic.`}
-            </p>
           </div>
         )}
       </div>
 
       <div className="border-t pt-5">
-        <TagEditor
-          label="Anywhere else you would work"
-          values={p.locations}
-          suggestions={[home, "Remote (US)"].filter(Boolean)}
-          onChange={(v) => update((d) => void (d.prefs.locations = v))}
-          placeholder="Add a city, or Remote"
-        />
-        <p className="mt-2 text-xs text-muted-foreground">Only needed if you would move or travel for the right job. Leave it empty and we will search around your home base.</p>
+        <TagEditor label="Anywhere else you would work" values={p.locations} suggestions={[state.profile.location, "Remote (US)"].filter(Boolean)} onChange={(v) => update((d) => void (d.prefs.locations = v))} placeholder="Add a city, or Remote" />
       </div>
     </div>
   );
 }
+
+const PAY_MIN = 30000;
+const PAY_MAX = 200000;
 
 function PayBlock() {
   const { state, update } = useStore();
   const p = state.prefs;
+  const lo = p.salaryFloor;
+  const hi = Math.max(lo + 5000, p.salaryCeiling ?? 150000);
   return (
     <div className="card-base space-y-3 p-5 sm:p-6">
       <div className="flex items-center justify-between text-sm">
-        <span className="font-medium" id="floor-label">
-          Lowest salary you would accept
+        <span className="font-medium" id="pay-label">
+          Salary range
         </span>
-        <span className="num font-semibold">${p.salaryFloor.toLocaleString()}</span>
+        <span className="num font-semibold">
+          ${lo.toLocaleString()} to ${hi.toLocaleString()}
+          {hi >= PAY_MAX ? "+" : ""}
+        </span>
       </div>
-      <Slider aria-labelledby="floor-label" value={[p.salaryFloor]} min={30000} max={150000} step={5000} onValueChange={([v]) => update((d) => void (d.prefs.salaryFloor = v))} />
-      <p className="text-xs text-muted-foreground">
-        {state.mode === "live"
-          ? "Many listings hide pay. We never rule a job out for that, we just flag it."
-          : `${JOBS.filter((j) => j.salary && j.salary[1] >= p.salaryFloor).length} of ${JOBS.length} current listings pay at or above this at the top of their range.`}
-      </p>
+      <Slider
+        aria-labelledby="pay-label"
+        value={[lo, hi]}
+        min={PAY_MIN}
+        max={PAY_MAX}
+        step={5000}
+        minStepsBetweenThumbs={1}
+        onValueChange={([a, b]) =>
+          update((d) => {
+            d.prefs.salaryFloor = a;
+            d.prefs.salaryCeiling = b;
+          })
+        }
+      />
+      <p className="text-xs text-muted-foreground">Jobs that pay less than the low end are left out. Many listings do not say what they pay, and we still show those.</p>
     </div>
   );
 }
 
-/**
- * Education and certifications, read straight off the resume. These are often
- * what separates two similar candidates, and a parser can miss them, so they
- * are shown for checking rather than hidden away.
- */
-function CredentialsBlock({ parsed, setParsed }: { parsed: Resume | null; setParsed: (r: Resume) => void }) {
-  if (!parsed) return null;
-  const edit = (patch: Partial<Resume>) => setParsed({ ...parsed, ...patch });
-  return (
-    <div className="card-base grid grid-cols-1 gap-6 p-5 sm:p-6 md:grid-cols-2">
-      <LineEditor label="Education" icon={GraduationCap} values={parsed.education} onChange={(v) => edit({ education: v })} placeholder="Degree, school, year" />
-      <div>
-        <LineEditor label="Certifications and licenses" icon={Award} values={parsed.certifications} onChange={(v) => edit({ certifications: v })} placeholder="Certification name, year" />
-        <p className="mt-2 text-xs text-muted-foreground">Licenses, safety cards, and software certificates all count. These often decide who gets called.</p>
-      </div>
-    </div>
-  );
-}
-
-/** A plain list of one line entries. Unlike TagEditor, these are sentences rather than chips. */
-function LineEditor({
-  label,
-  icon: Icon,
-  values,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  values: string[];
-  onChange: (v: string[]) => void;
-  placeholder: string;
-}) {
-  const [v, setV] = useState("");
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <Icon className="h-4 w-4 text-primary" />
-        {label}
-      </div>
-      {values.length === 0 && <p className="text-sm text-muted-foreground">Nothing found on your resume. Add anything you have.</p>}
-      <ul className="space-y-1.5">
-        {values.map((e, i) => (
-          <li key={`${e}-${i}`} className="flex items-start gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
-            <span className="flex-1">{e}</span>
-            <button
-              type="button"
-              onClick={() => onChange(values.filter((_, j) => j !== i))}
-              className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-danger"
-              aria-label={`Remove ${e}`}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </li>
-        ))}
-      </ul>
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const t = v.trim();
-          if (t && !values.includes(t)) onChange([...values, t]);
-          setV("");
-        }}
-      >
-        <Input value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-9" />
-        <Button type="submit" variant="outline" size="sm">
-          <Plus /> Add
-        </Button>
-      </form>
-    </div>
-  );
-}
-
-/* ---------------- Step 5: intensity ---------------- */
+/* ---------------- Step 5: pace ---------------- */
 
 const INTENSITY_ICON: Record<Intensity, React.ComponentType<{ className?: string }>> = { casual: Leaf, active: Zap, urgent: Flame };
 
@@ -897,7 +807,7 @@ function StepIntensity({ headingRef }: HRef) {
   const { state, update } = useStore();
   return (
     <div>
-      <StepHeading headingRef={headingRef} title="How hard do you want to push?" sub="This sets how many actions show up in your daily plan. Every action is small. You can change it any time." />
+      <StepHeading headingRef={headingRef} title="How hard do you want to push?" />
       <div role="radiogroup" aria-label="Search intensity" className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {(Object.keys(INTENSITY_META) as Intensity[]).map((k) => {
           const m = INTENSITY_META[k];
@@ -909,122 +819,14 @@ function StepIntensity({ headingRef }: HRef) {
                 <Icon className="h-5 w-5" />
               </span>
               <span className="text-lg font-semibold">{m.label}</span>
-              <span className="mt-1 text-sm text-muted-foreground">{m.blurb}</span>
-              <span className="mt-4 flex items-baseline gap-1.5">
+              <span className="mt-3 flex items-baseline gap-1.5">
                 <span className="num font-display text-3xl font-semibold">{m.actions}</span>
                 <span className="text-sm text-muted-foreground">actions a day</span>
               </span>
-              <span className="text-xs text-muted-foreground">{m.apps}</span>
             </button>
           );
         })}
       </div>
-    </div>
-  );
-}
-
-/* ---------------- Step 6: results ---------------- */
-
-function StepResults({ headingRef, onFinish }: HRef & { onFinish: () => void }) {
-  const { state, update } = useStore();
-  const nav = useNavigate();
-  const onTailor = (id: string) => {
-    update((s) => void (s.onboarded = true));
-    nav(`/app/studio?job=${id}&tailor=1`);
-  };
-  const [ready, setReady] = useState(false);
-  const ghosts = JOBS.filter((j) => j.legit.score < state.legitThreshold);
-  const top = JOBS.filter((j) => j.legit.score >= state.legitThreshold)
-    .sort((a, b) => b.match - a.match)
-    .slice(0, 5);
-  const shown = JOBS.filter((j) => j.legit.score >= state.legitThreshold);
-
-  return (
-    <div>
-      {!ready ? (
-        <div className="mx-auto max-w-lg py-6">
-          <h1 ref={headingRef} tabIndex={-1} className="mb-6 font-display text-3xl font-semibold outline-none">
-            Finding your first matches
-          </h1>
-          <div className="card-base p-6">
-            <AiWorking
-              title="This takes a few seconds"
-              stepMs={800}
-              steps={[
-                "Scanning 2,340 open listings across the Northeast and remote",
-                "Checking each one against its company's own careers page",
-                `Setting aside ${ghosts.length} listings we could not stand behind, and 312 duplicates`,
-                "Scoring transferable fit against your resume",
-                "Ranking by match and legitimacy",
-              ]}
-              onDone={() => {
-                setReady(true);
-                // matches are real app screens, so the account counts as set up from here
-                update((s) => void (s.onboarded = true));
-              }}
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="animate-fade-up">
-          <div className="mb-7 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-success animate-pop">
-              <Sparkles className="h-6 w-6" />
-            </div>
-            <h1 ref={headingRef} tabIndex={-1} className="font-display text-3xl font-semibold outline-none sm:text-4xl text-balance">
-              Your experience counts in more places than you think.
-            </h1>
-            <p className="mx-auto mt-2 max-w-xl text-muted-foreground">Here are your five strongest matches. We checked every one against the employer’s own careers page, and every score shows its reasoning.</p>
-          </div>
-          <div className="mb-6 grid grid-cols-3 gap-3">
-            {[
-              { n: shown.length, l: "real matches found" },
-              { n: shown.filter((j) => j.careerChangerFriendly).length, l: "career changer friendly" },
-              { n: ghosts.length, l: "listings set aside" },
-            ].map((s) => (
-              <div key={s.l} className="card-base p-4 text-center">
-                <div className="num font-display text-3xl font-semibold">{s.n}</div>
-                <div className="text-xs text-muted-foreground">{s.l}</div>
-              </div>
-            ))}
-          </div>
-          {ghosts.length > 0 && (
-            <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border bg-background p-3 text-sm">
-              <span className="text-muted-foreground">Hidden for you:</span>
-              {ghosts.map((g) => (
-                <span key={g.id} className="inline-flex items-center gap-2">
-                  <span className="font-medium">{g.company.name}</span>
-                  <LegitBadgeView badge={g.legit.badge} score={g.legit.score} size="xs" />
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="space-y-3">
-            {top.map((j, i) => (
-              <JobCard key={j.id} job={j} index={i} />
-            ))}
-          </div>
-        {top[0] && (
-          <div className="mt-8 rounded-2xl border border-primary/30 bg-primary-soft/50 p-5 text-center">
-            <h2 className="font-display text-xl font-semibold">Your first tailored resume is free.</h2>
-            <p className="mx-auto mt-1 max-w-lg text-sm text-foreground/80">
-              We will rewrite your resume for {top[0].title} at {top[0].company.name}: reordering, rewording, and re-emphasizing what you already have. Nothing invented, and you approve every change.
-            </p>
-            <Button size="lg" className="mt-4" onClick={() => onTailor(top[0].id)}>
-              <Sparkles /> Tailor it for {top[0].company.name}
-            </Button>
-            <p className="mt-2 text-xs text-muted-foreground">Your original stays exactly as it is. Tailoring never changes it.</p>
-          </div>
-        )}
-
-          <div className="mt-6 flex flex-col items-center gap-3">
-            <Button size="lg" variant="outline" onClick={onFinish}>
-              <Rocket /> Go to Today's Plan
-            </Button>
-            <p className="text-xs text-muted-foreground">Your matches will be waiting in the feed.</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

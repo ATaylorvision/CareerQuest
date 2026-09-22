@@ -51,7 +51,7 @@ export function Chat({ conversationId, compact, onNew }: { conversationId: strin
       c.messages.push({ id: `u${Date.now()}`, role: "user", text: t, at: new Date().toISOString() });
       if (c.messages.length === 1) c.title = titleFrom(t);
       c.updatedAt = new Date().toISOString();
-      s.usage.copilotMessages += 1;
+      if (s.mode !== "live") s.usage.copilotMessages += 1;
       // most recent first
       s.chats = [c, ...s.chats.filter((x) => x.id !== id)];
     });
