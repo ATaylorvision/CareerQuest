@@ -1,284 +1,205 @@
-# CareerQuest Onboarding: Complete Map (Draft v1)
+# Resumati Onboarding: Design & Map (v3)
 
-Goal: get everything needed to find real, fitting, nearby jobs, build a strong resume, and start the daily plan. Target is 15 screens. Every field is tagged:
+> This doc uses **Resumati** as the working name for the app. Nothing in the live code has been renamed yet — say the word and it's a small, mechanical change (copy, page titles, emails, README). Until then the running app is still called CareerQuest.
 
-- **[R]** required to continue  **[O]** optional  **[A]** auto-filled from resume (user confirms)
-- **→ Used for**: why we ask (if we cannot say why, we cut the field)
+This is built from two rounds of onboarding research that sound like they disagree and don't:
 
-Today the app has 6 steps (Resume, Career, Translator, Targets, Pace, Matches). This map expands that to 15 screens. Existing screens are marked **EXISTS**, changed ones **EXPAND**, new ones **NEW**.
+- **Round one:** don't waste a single screen. A field only belongs in onboarding if skipping it visibly hurts the next thing the user sees. Most of what a first draft wants to ask belongs in Settings or at the moment it's actually needed, not on day one.
+- **Round two:** length itself doesn't predict success. The average successful app has around 25 onboarding screens; some of the best-performing ones (Duolingo, around 60) don't feel long at all, because every screen shows something personal, real, or delightful before it asks for the next thing. Some of the shortest, best flows are AI products that ask almost nothing up front and let the product learn from behavior instead.
 
----
-
-## 0. Global rules (apply to every screen)
-
-- Progress bar at top: "Step X of 15" plus a named step list. Completed steps are clickable to go back.
-- Buttons on every screen: **Back**, **Continue** (disabled until required fields are valid, with a one-line reason next to it), **Save and finish later** (saves draft, emails a resume link).
-- Autosave after every field change. Returning users land on the last unfinished screen.
-- Every screen: "Why we ask" link that expands one sentence.
-- Sensitive fields (EEO, disability, veteran, criminal record, salary history) always have **Prefer not to say** and are never shown to employers, never used to filter jobs.
-- Nothing is sent to any employer during onboarding.
-- Full keyboard and screen-reader support, plain 8th-grade wording.
+Combined, the rule is: **cut anything that doesn't earn its place, and on everything that survives, make it feel like it's working for the user, not the other way around.** A screen that shows a real, personalized payoff immediately earns its place even if "round one" alone might have cut it as optional. A screen that's just a form asking for data nobody will see the benefit of yet does not, no matter how short it is.
 
 ---
 
-## THE DECISION TREE
+## 1. Three kinds of onboarding, and which Resumati uses
 
-```
-START
- │
- ├─ 1 Welcome / Account ─────────────── new user ──► 2
- │                                       returning ─► resume at last screen
- │
- ├─ 2 Your situation
- │     ├─ Career changer ──────────────► shows 5b (why changing) + 6 (translator)
- │     ├─ Recently laid off ───────────► shows 5c (layoff details: date, severance, unemployment)
- │     ├─ Employed and looking ────────► shows 5d (current employer privacy: hide from current employer)
- │     ├─ Returning to work ───────────► shows 5e (gap: how long, what you did, refresher skills)
- │     ├─ New grad / first job ────────► skips work-history depth, expands education + projects
- │     └─ Veteran / military transition ► shows 5f (MOS/rank translator) + veteran benefits
- │
- ├─ 3 Resume
- │     ├─ Upload file ─► parse ─► success ─► 4
- │     │                       └─ fail ───► "Try again" or "Build one with me" ─► 3b
- │     ├─ Paste text ──► parse ─► 4
- │     ├─ Import LinkedIn ─► parse ─► 4
- │     └─ No resume ───► 3b guided builder (10 questions) ─► 4
- │
- ├─ 4 Confirm what we read (work, education, skills, certs)
- │     └─ missing dates / gaps > 6 months ─► flag inline, ask "what happened?" (optional, feeds gap narrative)
- │
- ├─ 5 Where you live (must confirm location) ─► 5b–5f conditional screens per situation
- │
- ├─ 6 Career direction
- │     ├─ Same field ──────────────────► 8
- │     └─ Different field ─► 7 Translator ─► 8
- │
- ├─ 7 Translator (only if changing fields or resume shows weak fit)
- │
- ├─ 8 Target roles + level
- ├─ 9 Work setup + distance + travel
- ├─ 10 Pay + benefits
- ├─ 11 Must-haves and dealbreakers
- ├─ 12 Work authorization + logistics (start date, license, background)
- ├─ 13 Application answers vault (reused across applications)
- ├─ 14 Pace + schedule + notifications
- └─ 15 Review, first matches, plan  ─► DASHBOARD
-```
-
-Branch summary: **screens 1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15 always show. Screens 5b–5f and 7 appear only when the answer on screen 2 or 6 calls for them.** A career changer sees 16 screens; a plain job seeker sees 14 to 15.
-
----
-
-## SCREEN-BY-SCREEN
-
-### 1. Welcome and account — NEW (some exists in Auth)
-| Field / control | Type | Req | Used for |
-|---|---|---|---|
-| Sign up with Google / Apple / Email | buttons | R | Account |
-| Email | text | R | Login, receipts, reminders |
-| Password (if email) | password, 8+ chars, show/hide | R | Login |
-| Terms and Privacy checkbox | checkbox | R | Legal consent |
-| "How did you hear about us?" | dropdown (Search, Friend, Social, Career center, Workforce agency, Other) | O | Marketing, partner tracking |
-| Referral / partner code | text | O | Discounts, agency partnerships |
-| Promise card: "We never apply without your OK" | info | — | Trust |
-
-Buttons: **Create account**, **Log in instead**, **Continue with Google**.
-
-### 2. Your situation — EXISTS (EXPAND)
-| Field | Type | Req | Used for |
-|---|---|---|---|
-| Situation | 6 cards (Changer, Laid off, Employed, Returning, New grad, Veteran) | R | Drives the branch tree |
-| Urgency | 4 cards: "Need income now", "Within 3 months", "Within 6 months", "No rush" | R | Pace default, Wren tone, filter strictness |
-| Preferred first name | text | R | Greeting, letters |
-| Age range 18+ confirm | checkbox | R | Legal |
-
-### 3. Your resume — EXISTS
-| Control | Type | Req | Notes |
-|---|---|---|---|
-| Upload | drag/drop or picker (PDF, DOCX, TXT, up to 10 MB) | one of four | Parses roles, dates, bullets, skills |
-| Paste text | textarea | | Same parser |
-| Import LinkedIn | URL or PDF export | | Same parser |
-| "I don't have a resume" | button | | Goes to 3b |
-| Progress panel | info | | "Reading roles, dates, bullets..." |
-
-**3b Guided builder (NEW, only if no resume):** for each job (up to 5): title, employer, city, start month/year, end month/year or "Current", 3 prompts ("What did you do daily? What did you fix or improve? Any numbers?"). Then education, skills, certifications. Wren turns answers into bullets.
-
-### 4. Confirm what we read — EXPAND
-Editable cards, all **[A]**:
-| Section | Fields |
-|---|---|
-| Contact | Full name **[R]**, email **[R]**, phone **[R]**, city/state **[R]**, LinkedIn URL [O], portfolio/website [O] |
-| Work history (each) | Job title, employer, city, start, end/current, bullets (add, edit, delete, reorder) |
-| Education (each) | School, degree/credential, field, graduation year, "in progress" toggle, GPA [O, hidden by default] |
-| Certifications & licenses (each) | Name, issuer, year earned, expiry [O], license number [never shown on resume] |
-| Skills | tag editor, suggested skills chips, mark "top 5" |
-| Languages | language + level |
-| Summary | 2 to 3 sentence text, "Write it for me" button |
-| Extras | Volunteer, military, awards, publications, projects [all O] |
-
-Flags shown inline: "Gap of 14 months between X and Y", "No dates on this job", "Bullet has no result".
-Buttons: **Looks right**, **Add a job**, **Re-upload**, **Fix with Wren**.
-
-### 5. Where you live — EXISTS (EXPAND)
-| Field | Type | Req | Used for |
-|---|---|---|---|
-| Home base | place picker (must confirm on map) | R | Real distance filter |
-| Street address / ZIP | text | O | Exact commute time (ZIP is enough) |
-| Willing to relocate? | No / Within state / Anywhere / Only for the right offer | R | Widens search |
-| Relocation cities | tag editor | O | Extra search areas |
-| Has reliable transportation | Yes / Public transit only / No | R | Commute filter, transit-friendly jobs |
-| Has own vehicle | yes/no | O | Driving-required roles |
-
-### 5b–5f Situation branches (each appears only if picked on screen 2)
-**5b Career changer:** Why changing (multi-select: burnout, pay, growth, layoff, passion, health, schedule, other); years of experience you want to carry over; open to taking a pay cut for a new field (Yes/No/Some, with $ amount).
-**5c Laid off:** Last day worked (date); received severance (Y/N, weeks) [O]; filing unemployment (Y/N) [O]; reason for leaving wording ("Position eliminated", "Company closed", "Downsizing"), so Wren writes it truthfully in letters; job search deadline (weeks of runway) [O].
-**5d Employed:** Hide search from current employer (toggle; blocks their company name in matches and skips confidential postings); notice period (none, 2 weeks, 4 weeks, custom); current pay for negotiation [O, private]; can interview during work hours (Y/N).
-**5e Returning:** Time away (dropdown); reason (family, health, school, travel, other) [O]; what you did meanwhile (volunteer, courses, freelance) [O]; wants "returnship" / re-entry programs (Y/N); confidence check-in ("How rusty do you feel?" 1–5) sets gentler pace.
-**5f Veteran/military:** Branch, rank, MOS/rating, years served, discharge type [O], security clearance (none / active / expired, level) [O]; interested in veteran-hiring employers (Y/N); military skills translator runs at screen 7.
-
-### 6. Career direction — EXISTS (EXPAND)
-| Field | Type | Req | Used for |
-|---|---|---|---|
-| Path | "Stay in my field" / "Move to a related field" / "Totally new field" | R | Skips or shows translator |
-| Fields you're drawn to | 5 field cards + 16 idea chips + "Something else" text | R (unless "stay") | Field targets |
-| Anything you definitely do NOT want to do | tag editor | O | Filter |
-| Interest in self-employment / gig / freelance | yes/no | O | Adds contract roles |
-
-### 7. Translator — EXISTS (only if changing fields)
-Shows: your past skills mapped to new field, transferable strengths, gaps, quick wins (courses, certs). Controls: **Accept**, **Edit**, **Remove a line**, **Ask Wren**. Feeds resume rewrite; user picks resume layout and previews (existing "Design" panel).
-
-### 8. Target roles and level — EXISTS (EXPAND)
-| Field | Type | Req | Used for |
-|---|---|---|---|
-| Target job titles | tag editor with suggestions from resume | R (1+) | Match query |
-| Seniority | Entry / Mid / Senior / Lead / Manager / Director+ | R | Level fit |
-| Open to a step down | Yes / No | O | Widens match |
-| Open to stretch roles one level up | Yes / No | O | Widens match |
-| Employment type | Full-time / Part-time / Contract / Temp / Seasonal / Internship (multi) | R | Filter |
-| Industries to prefer / avoid | two tag editors | O | Ranking, filter |
-| Company size | Startup / Small / Mid / Large / No preference | O | Ranking |
-| Companies to target | tag editor | O | Watchlist |
-| Companies to never show | tag editor | O | Blocklist |
-
-### 9. Work setup, distance, schedule — EXISTS (EXPAND)
-| Field | Type | Req | Used for |
-|---|---|---|---|
-| Work style | Remote / Hybrid / Onsite / Open to all | R | Filter |
-| Max distance | slider 5–100 mi | R (if not remote) | Filter |
-| Max commute time | slider 10–90 min | O | Filter |
-| Days per week onsite (if hybrid) | 1–5 | O | Filter |
-| Other places you'd work | tag editor | O | Extra areas |
-| Shift preference | Days / Evenings / Nights / Weekends / Rotating / Flexible (multi) | R for hourly/trade roles | Filter |
-| Hours per week | 10–20 / 20–30 / 30–40 / 40+ | R | Filter |
-| Travel tolerance | None / up to 10% / 25% / 50% / Any | O | Filter |
-| Overnight travel OK | yes/no | O | Filter |
-| Work-hours flexibility needs | text | O | Ranking |
-
-### 10. Pay and benefits — EXISTS (EXPAND)
-| Field | Type | Req | Used for |
-|---|---|---|---|
-| Pay type | Hourly / Salary | R | Range display |
-| Minimum pay | slider / number | R | Hard filter |
-| Target pay | slider / number | O | Ranking, negotiation |
-| Show jobs with no posted pay | Yes / No | R | Filter |
-| Benefits must have | multi: health, dental, vision, 401k match, PTO, paid sick leave, parental leave, tuition help, remote stipend, childcare help | O | Ranking, must-haves |
-| Health insurance needed for dependents | yes/no | O | Ranking |
-| Bonus / equity important | yes/no | O | Ranking |
-| Salary history | **never asked** (illegal in many states; we tell the user not to share it) | — | — |
-
-### 11. Must-haves and dealbreakers — EXISTS
-Two tag editors with suggestions: Must-haves (e.g., 4-day week, no weekends, growth path, union, mission-driven, women-led, fair-chance employer) and Dealbreakers (e.g., commission-only, on-call, night shift, MLM, pay not posted, no benefits, staffing agency). Also toggles: **Hide staffing agencies**, **Hide jobs older than N days** (default 14), **Hide jobs I've applied to** (default on), **Only verified employers** (default on).
-
-### 12. Work authorization and logistics — NEW
-| Field | Type | Req | Used for |
-|---|---|---|---|
-| Authorized to work in US | Yes / No / Need sponsorship now or later | R | Auto-answers, filters sponsorship-only roles |
-| Country / visa type | dropdown | O (if sponsorship) | Filter |
-| Earliest start date | date / "Immediately" / "2 weeks" / "1 month" | R | Applications |
-| Driver's license (state, class, CDL endorsements) | dropdown | O | Driving/trade jobs |
-| Willing to pass background check | Yes / Has concerns | O | Filters; concerns route to fair-chance employers, never shared |
-| Drug test OK | Yes / No / Prefer not to say | O | Filter |
-| Physical requirements OK (lift 25/50 lb, stand long, climb) | multi | O | Trade/warehouse fit |
-| Reasonable accommodation needs | text | O, private | Wren advice only, never shared |
-| Age 18+ / 21+ eligibility | auto | — | Filter |
-| Union member / trade card | text | O | Trade jobs |
-
-### 13. Application answers vault — NEW
-One-time answers reused in applications (all editable in Settings):
-| Field | Type | Req |
+| Kind | What it is | Does Resumati use it? |
 |---|---|---|
-| Phone, mailing address | text | R (pre-filled) |
-| LinkedIn, portfolio, GitHub | URL | O |
-| Preferred pronouns | text | O |
-| References (up to 3: name, relationship, employer, phone, email, OK to contact) | repeater | O |
-| "Why do you want to work here?" starter | textarea, Wren drafts | O |
-| "Tell me about yourself" starter | textarea, Wren drafts | O |
-| "Greatest strength / weakness" starters | textarea | O |
-| Salary expectation answer | "Negotiable" / number / range | R |
-| Referred by an employee? | default No | O |
-| Previous employer at target company? | default No | O |
-| Cover letter tone | Warm / Direct / Formal / Bold | R |
-| Signature name for letters | text | R |
-| **Voluntary EEO** (gender, race, veteran, disability), each with "Prefer not to say" | dropdowns | O |
-| Consent: "Wren may fill and submit forms only after I approve each one" | checkbox | R |
+| **Welcome / read-only screens** | Swipeable slides pitching the app before anything happens | **No.** The first screen is the resume upload — already doing the thing, not being pitched at. This matches the apps that let people try the core experience before signing up, which is rare specifically among AI products and stands out when done. |
+| **Information-gathering screens** | Screens that collect what the app needs to actually work, or that make the next screen more personal | **Yes.** The 6-step flow below. Every field has to either be load-bearing for the resume/matches, or immediately show what it unlocked. |
+| **Tutorial-style walkthrough** | Speech bubbles pointing at features, click-through required | **No, not as a gate.** Replaced by on-demand tips plus a persistent first-week checklist (Section 5) — teaching in context, not up front. |
 
-### 14. Pace, schedule, notifications — EXISTS (EXPAND)
-| Field | Type | Req | Used for |
+---
+
+## 2. Governing rules
+
+1. **No mandatory account until the user has gotten something real.** Guest onboarding through Supabase anonymous sign-in, real matches and a tailored resume shown before any account exists, sign-up only at Download. This is exactly what the strongest AI-product and "try before you sign up" examples do, and it's already correct — protect it.
+2. **A field earns its place one of two ways: it visibly changes the very next thing the user sees, or it makes something later demonstrably more personal and shows that payoff immediately.** "It might be useful data" is not enough on its own. But "picking your career direction changes the actual sentences on your resume, and you see it happen on the very next screen" is enough, even though it's "just" a preference question.
+3. **Never force a single choice where a real person plausibly has more than one true answer.** Headspace let users pick more than one goal instead of forcing one, and saw a 10% lift in conversion because it matched how people actually think about their situation. Resumati's situation picker and career-direction picker should allow more than one selection where that's genuinely true (someone can be both "recently laid off" and "a career changer" at the same time).
+4. **Every question with no obviously right answer for a first-time user gets a "not sure yet" path with a sensible default.** Salary range and Pace, specifically (Section 4).
+5. **Show the personalized payoff of an answer immediately, not just at the end.** The Translator step already does this well — three real lines from the user's own resume, rewritten live, before the flow is even done. That pattern should repeat wherever it can: right after the resume is parsed, right after location is confirmed, right after targets are set.
+6. **Teach in context, never up front.** No walkthrough. A tip appears exactly once, exactly when a feature is first touched, plus one persistent checklist for the first week that replaces a tour entirely (Section 5).
+7. **Ask for a permission with a one-line reason immediately before the system prompt, never cold.** Applies today to the browser's own location permission inside "Use my location," and to any future notification or email opt-in.
+8. **Nothing is ever lost.** Autosave on every field, guest account is a real row from screen one, returning users resume exactly where they left off.
+9. **Copy sells the outcome, never lists the feature.** Not "3 templates" — "pick the one that gets you read." Not "AI-scored matches" — "here's exactly why this job fits you."
+10. **A soft, dismissible monetization moment is fine right after the first real payoff — never before it, and never blocking.** Grammarly's personalized plan recommendation after a quiz lifted upgrades by ~20%; the lesson isn't "add a paywall," it's "the ask lands better right after value than at any other point."
+11. **Track the numbers.** Section 7 defines what "working" means so future changes get judged by data.
+
+---
+
+## 3. The decision tree (current, minimal)
+
+```
+Guest session starts silently (Supabase anonymous sign-in) — no form, no screen
+ │
+ ├─ 1  Resume        (upload/paste → personalized "here's what we found" moment → contact + confirm
+ │                     location + work history + skills + education + certs)
+ ├─ 2  Career         (situation, multi-select + where you're headed, multi-select + free text)
+ ├─ 3  Translator     (3 real lines rewritten live + pick 1 of 3 templates + preview/edit, no download)
+ ├─ 4  Targets        (roles, work style, distance, salary range, must-haves, dealbreakers)
+ ├─ 5  Pace           (one choice: Casual / Active / Urgent, defaults if skipped)
+ └─ 6  Matches        (live scored search, 80%+ shown, pick a job → tailor it)
+       │
+       └─ First resume (Studio, pre-tailored)
+             └─ Download → sign-up gate (name, email, password) → account converts in place
+                   → download fires → email copy sent → soft plan tease (dismissible) → first-week checklist appears
+```
+
+Still six required screens plus one soft gate. Length was never the target either direction — the six screens stay because each one is load-bearing or shows a personalized payoff live; nothing gets added just to look thorough, and nothing gets cut just to look short.
+
+---
+
+## 4. Screen-by-screen
+
+Tags: **[R]** required · **[O]** optional, skippable in place · **[D]** has a "not sure / decide later" default · **[A]** auto-filled from the resume, user confirms · **[P]** shows a personalized payoff immediately, not just collects data.
+
+### Step 1 — Resume
+| Field | Type | Tag | Why it's here |
 |---|---|---|---|
-| Intensity | Light / Steady / All-in (actions per day) | R | Daily plan size |
-| Hours per day you can give | 15 min / 30 / 1 hr / 2+ hr | R | Plan size |
-| Best time of day | Morning / Afternoon / Evening | R | Reminder time |
-| Days off | multi day picker | O | Skips plan |
-| Reminder channels | Email / Text / Push | R (1+) | Delivery |
-| Phone for text (if chosen) + consent | text, checkbox | conditional | SMS |
-| Quiet hours | time range | O | Notifications |
-| Daily digest time | time | O | Email |
-| Weekly progress report | toggle | O | Email |
-| Interview calendar sync | Google / Outlook / None | O | Availability |
-| Availability windows for interviews | day/time grid | O | Scheduling |
-| Accountability partner email | email | O | Shares weekly summary |
+| Upload file, paste text, or "I don't have one yet" | file / textarea / button | R | Nothing else can happen without a resume |
+| **"Here's what we found" summary** (roles read, years of experience, skills found, one line of proof it actually read the resume) | display, appears the instant parsing finishes | **P** | This is the Endel/BitePal move: show what the very first answer already unlocked, before asking for anything else. Costs nothing extra to build — the data already exists the moment parsing finishes, it just isn't shown as its own moment yet. |
+| Name, Email, Phone | text, auto-filled | A | Contact line on the resume |
+| Where do you live? | place picker, must confirm an exact match | R | Every distance shown anywhere depends on this |
+| "Use my location" | button triggering the browser's own permission prompt | O | **Add a one-line prime directly above the button** ("We only use this once, to find your city — nothing is tracked") before the OS permission dialog fires, not after |
+| Work history, skills, education, certifications | repeatable cards / tag lists / lines | A, edit freely | The actual content being tailored |
+| Summary | — | not asked | Written by the AI after Step 1, from everything above |
 
-### 15. Review, first matches, plan — EXISTS (Matches step, EXPAND)
-Read-only summary cards, each with **Edit** button that jumps back:
-Profile, Resume, Direction, Roles, Location and distance, Pay, Must-haves and dealbreakers, Authorization, Pace.
-Then: loading state "Finding jobs near you", first 10 real matches with fit reason and distance, **Save**, **Not for me** (asks why, refines filters), **Open** buttons. Then: "Your first week plan" preview.
-Final buttons: **Go to my dashboard**, **Download my resume**, **Upgrade** (soft, optional), **Share progress**.
-Edge cases: zero matches → suggests widening distance, pay, or titles with one-click buttons; too few verified → says so.
+### Step 2 — Career
+| Field | Type | Tag | Notes |
+|---|---|---|---|
+| Your situation | **multi-select** cards (Career changer / Recently laid off / Employed and looking / Returning to work) | R (1+) | Changed from single-select: a person can be laid off *and* a career changer at once, and forcing one hides half of who they are from the very tone Wren writes in |
+| I am coming from | free text | O | |
+| I want to move into | **multi-select** of the 5 fields, plus "something else" free text, plus idea chips | R (1+) | Same logic as situation — most career changers are genuinely weighing more than one direction at this stage, not one |
+| Which of these is closest to it? (only for free-text entries) | dropdown | R when shown | |
+
+### Step 3 — Translator
+| Field | Type | Tag |
+|---|---|---|
+| 3 rewritten lines, live, in the user's own words vs. the new field's language | display | **P** |
+| Template (Signature / Classic / Minimal) | picker | R |
+| Preview / Edit toggle | toggle | O |
+
+This step is the model for the rest of the flow: it shows the payoff of Steps 1 and 2 immediately, in the user's own words, before asking for anything more. No download here — the payoff is visible, the value isn't yet portable, which is exactly the gap the sign-up gate later closes.
+
+### Step 4 — Targets
+| Field | Type | Tag |
+|---|---|---|
+| Target roles | tag editor, pre-filled | R (1+) |
+| How do you want to work? | radio | R |
+| Home base | place picker, editable | A |
+| Max distance | slider | R (unless Remote only) |
+| Anywhere else you would work | tag editor | O |
+| Salary range | two-handle slider | **D** — defaults to the pay floor implied by the resume's most recent role, labeled "You can change this any time" |
+| Must haves / Dealbreakers | tag editors with suggestions | O |
+
+### Step 5 — Pace
+| Field | Type | Tag |
+|---|---|---|
+| Casual / Active / Urgent | 3 cards | **D** — defaults to Active if skipped |
+
+### Step 6 — Matches
+Read-only until a job is picked. The payoff screen for the entire flow: 80%+ shown, honest fallback (best 3, real scores) when nothing clears 80.
+
+### After Step 6 — sign-up gate, then two soft moments
+| Moment | What happens | Tag |
+|---|---|---|
+| Sign-up gate | Name, email, password — the one mandatory-account moment, kept exactly here | R |
+| Soft plan tease | One dismissible card, right after the download fires: "You have 2 of 3 free tailored resumes left." No blocking, no repeat. | O |
+| First-week checklist | Appears on the dashboard, replaces a tour entirely (Section 5) | O |
+
+**On splitting the sign-up gate:** one study found splitting a signup form across two screens (email first, then password) lifted conversion 15% — friction in one place can lower it somewhere else. Worth an A/B test later; not assumed correct without data, since it can just as easily go the other way for a form this short.
 
 ---
 
-## DATA WE COLLECT (field checklist to avoid missing anything)
+## 5. Teaching in context, not up front
 
-**Identity:** preferred name, full name, email, phone, city/state, ZIP, address [O], pronouns [O], age 18+ confirm.
-**Account:** password/social, terms, referral code, how heard.
-**Situation:** situation type, urgency, why changing, layoff date/details, employer-hiding, notice period, gap details, military details.
-**Resume:** file/paste/LinkedIn, jobs (title, employer, city, dates, bullets), education, certs/licenses, skills, languages, summary, volunteer, projects, awards.
-**Direction:** stay/related/new field, fields of interest, exclusions, gig interest.
-**Targets:** titles, seniority, step down/up, employment types, industries, company size, company watch/block lists.
-**Location & setup:** home base, relocation, transportation, work style, max distance, commute time, hybrid days, extra places, shifts, hours, travel.
-**Pay:** pay type, min, target, unposted-pay toggle, benefits list, dependents, bonus/equity.
-**Filters:** must-haves, dealbreakers, hide agencies, job age, applied hidden, verified only.
-**Authorization & logistics:** work auth, sponsorship, start date, license, background, drug test, physical, accommodations, union.
-**Application vault:** references, standard answers, salary answer, tone, signature, EEO (all optional), approval consent.
-**Pace & comms:** intensity, hours/day, best time, days off, channels, SMS consent, quiet hours, digest, weekly report, calendar sync, availability, accountability partner.
-**System/analytics (automatic, not asked):** device, timestamp of each step, drop-off screen, source/UTM, consent record.
+No walkthrough screen, no speech-bubble tour. Two mechanisms instead, and they do different jobs:
+
+**One-time tips**, dismissed forever once seen, appearing the first time each moment actually happens:
+
+| Moment | Tip |
+|---|---|
+| First hover over a resume line in Studio | "Point at any line to see Wren's suggestion." |
+| First time opening Studio for a tailored resume | "Auto adjust fits your resume to one page for you." |
+| First time on the Matches board (not the ranked matches) | "This is every job we've found near you — open one and tell us if it fits, and your matches get sharper." |
+| First unscored job card | "We haven't scored this one yet — Check my fit takes a few seconds." |
+| First time on the Skill Gap Roadmap | "Already have something on this list? Tell us — it counts toward jobs that ask for it." |
+
+**A persistent first-week checklist** on the dashboard, replacing a tour the way Mural replaced pop-ups with a checklist and saw a 10% lift in one-week retention. Unlike a tip, it stays visible and dismissible-but-returnable until each item is done:
+
+- [ ] Confirm your location *(already done by the time this shows, checked automatically)*
+- [ ] Save or check fit on 3 jobs
+- [ ] Try the Skill Gap Roadmap
+- [ ] Look at the full job board, not just your matches
+- [ ] Set your pace in Settings if Active doesn't fit
+- [ ] Come back tomorrow to see new matches
+
+Six items, all real actions the product already supports, nothing invented for the checklist's sake.
 
 ---
 
-## OPEN QUESTIONS FOR YOU (need your decision before building)
+## 6. A human touch, optionally
 
-1. Is 15 screens the hard cap, or can conditional screens (5b to 5f, 7) be on top of it?
-2. Should account creation come first (screen 1) or after the resume upload, so people see value before signing up? (I recommend after the resume parse: fewer drop-offs.) The app already has a SignupGate component that supports this.
-3. Do we ask for phone/SMS at onboarding, or only in Settings later?
-4. EEO and background-check questions: keep in onboarding, or move to Settings? (Recommend keep optional, collapsed.)
-5. Which screens should be skippable with "Do this later"? Recommended: 12, 13, and the optional parts of 14.
-6. Free vs paid: does any screen (e.g., 13 vault, calendar sync) sit behind a plan?
+Some of the onboarding flows that stick tie a real moment to a real person: a founder's note at account creation, a CEO video the first time someone lists a space, a handwritten signature on a welcome screen. It works because it makes the product feel like it was built with intention, not assembled.
 
-## BUILD ORDER (suggested)
+This is a genuine option for Resumati, not a requirement — it only works if it's true. If there's a real, short story behind why this app exists, one plain note at one moment (most likely right after the first tailored resume downloads, or at account creation) could do more than any UI polish. Worth deciding deliberately rather than defaulting to generic congratulations copy. This is your call on tone and whether to put a name to it — flag it if you want a draft.
 
-1. Add new profile and prefs fields to `AppStore` and `supabase/schema.sql`.
-2. Build screens 12, 13, 14 (new data, self-contained).
-3. Expand 2, 5, 8, 9, 10, 11 (extend what exists).
-4. Add the conditional branch screens 5b to 5f.
-5. Rebuild the stepper for 15 screens with branching logic and Save-and-finish-later.
-6. Review screen 15 with Edit jump-links, then match-quality tuning using the new filters.
+---
+
+## 7. What to measure
+
+**Key action:** the first tailored resume is downloaded, or the first real, scored match is opened. Everything before that is onboarding; everything after is retention.
+
+Track, per user:
+- Time from guest session start to key action. If more than half of guests haven't hit it within 24 hours, onboarding is the problem, not the product.
+- Which step they were on when they last touched the app, for anyone who doesn't return within 24 hours — the drop-off screen, and the next thing to fix.
+- Sign-up gate conversion: guests who reach Download versus guests who complete the account.
+- Whether the Pace default (Active) and Salary default get changed by users who don't skip them — tells us if the default matches the common case or is just what people didn't bother to touch.
+- Whether allowing multi-select on situation and career direction actually gets used by more than one selection, and whether it changes match quality for those users.
+- First-week checklist completion rate per item, since an item nobody finishes is a sign it doesn't belong on the list.
+
+None of this requires new screens — it's event logging on the flow that already exists.
+
+---
+
+## 8. Where the old, longer draft's extra questions actually live
+
+None of that data was wrong to want. It just doesn't belong as a mandatory day-one screen. Each item moves to one of three places:
+
+| Field | Now lives in | When it's actually asked |
+|---|---|---|
+| Layoff details, severance, "reason for leaving" wording | Settings, optional; or right when Wren drafts a cover letter that needs it | Only if relevant to the letter being written |
+| Employer-hiding (confidential search) | Settings toggle | Anytime, off by default |
+| Returning-to-work gap narrative | Inline on the resume itself | When a gap over 6 months shows up, ask right there |
+| Military/veteran translator | A button in Studio ("Translate military experience") | On request |
+| Work authorization, background check, drug test, physical requirements | Just-in-time | Only the first time a specific posting actually asks |
+| Standard application-answer vault, references, EEO | Settings, entirely optional | Built out gradually, never a gate |
+| Notification channels, quiet hours, calendar sync | Settings | Preferences, not requirements |
+| "How did you hear about us," referral code | Cut | Doesn't change this user's resume or matches at all |
+
+---
+
+## 9. Build order
+
+1. Add the "here's what we found" personalized moment right after resume parsing (Step 1) — the data already exists, this is a display, not new collection.
+2. Change situation and career-direction to multi-select.
+3. Prime the location permission with a one-line reason before the browser prompt fires.
+4. Ship the Salary and Pace decide-later defaults with visible "Not sure yet" affordance.
+5. Build the six one-time tips and the six-item first-week checklist (Section 5).
+6. Add the soft, dismissible plan tease right after the first download — never before, never blocking.
+7. Add the event logging in Section 7.
+8. Decide on, then (if yes) draft, the human-touch moment in Section 6.
+9. A/B test splitting the sign-up gate into two screens once there's enough signal to read it.
+10. Everything in Section 8 gets built opportunistically, never as a gate.
+
+**Still not doing:** a mandatory upfront tutorial, a paywall before the first real value is shown, or any field that doesn't either change the next screen or make a later one visibly more personal.
