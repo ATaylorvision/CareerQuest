@@ -1,18 +1,18 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, CheckCheck, ClipboardPaste, Download, FileDown, Languages, LayoutTemplate, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
-import { AiWorking, Card, PageHeader, Segmented, SkeletonLines } from "@/components/common";
+import { CheckCheck, ClipboardPaste, Download, FileDown, Languages, LayoutTemplate, PenLine, Printer, RotateCcw, Save, Sparkles } from "lucide-react";
+import { AiWorking, Card, PageHeader, SkeletonLines } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ResumeDocument } from "@/components/studio/ResumeDocument";
-import { ChangeCard, GapsPanel, TranslatorPanel, VersionsPanel } from "@/components/studio/panels";
+import { ChangeCard, GapsPanel, TranslatorPanel } from "@/components/studio/panels";
 import { AtsScorePanel, KeywordPanel } from "@/components/studio/AtsPanels";
 import { WrenPanel } from "@/components/studio/WrenPanel";
+import { StudioHeader, type DocSection } from "@/components/studio/StudioHeader";
 import { SignupGate } from "@/components/SignupGate";
 import { relevantClaims } from "@/lib/skillClaims";
 import { useLive } from "@/live/LiveProvider";
@@ -464,97 +464,36 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
 
   const fileBase = `${built.name.replace(/\s+/g, "_")}_${job.company.name.split(" ")[0]}`;
 
+  const sections: DocSection[] = useMemo(() => {
+    const s: DocSection[] = [
+      { id: "section-contact", label: "Contact" },
+      { id: "section-summary", label: "Summary" },
+      { id: "section-experience", label: "Experience" },
+      { id: "section-education", label: "Education" },
+    ];
+    if (built.certsOwnSection && built.certifications.length > 0) s.push({ id: "section-certifications", label: "Certifications" });
+    s.push({ id: "section-skills", label: "Skills" });
+    return s;
+  }, [built.certsOwnSection, built.certifications.length]);
+
   return (
     <div>
-      <PageHeader
-        title="Studio"
-        sub="Your resume and cover letter for one job, on one page. Type anywhere on the document to change it."
-        actions={
-          <>
-            {doc === "resume" && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Download /> Download
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onSelect={() =>
-                    withAccount(() => {
-                      if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
-                    })
-                  }
-                >
-                  <Printer className="mr-2 h-4 w-4" /> PDF (print to PDF)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() =>
-                    withAccount(() => {
-                      downloadText(`${fileBase}_Resume.txt`, resumeToText(built));
-                      toast.success("Plain text resume downloaded");
-                    })
-                  }
-                >
-                  <FileDown className="mr-2 h-4 w-4" /> Plain text (.txt)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            )}
-          </>
-        }
-      />
+      <PageHeader title="Studio" sub="Your resume and cover letter for one job, on one page. Type anywhere on the document to change it." />
 
-      <Card className="mb-5 p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-          <div className="min-w-0 flex-1">
-            <label htmlFor="job-pick" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Working on
-            </label>
-            <Select value={job.id} onValueChange={(v) => setParams({ job: v })}>
-              <SelectTrigger id="job-pick" className="h-11">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {jobOptions.map((j) => (
-                  <SelectItem key={j.id} value={j.id}>
-                    {j.title} · {j.company.name} · {j.imported ? (j.match > 0 ? `added by you, ${j.match}% match` : "added by you") : `${j.match}% match`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            {!guest && (
-              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-                <ClipboardPaste /> Add a job
-              </Button>
-            )}
-            {!guest && (
-              <Segmented<Doc>
-                value={doc}
-                onChange={setDoc}
-                options={[
-                  { value: "resume", label: "Resume" },
-                  { value: "letter", label: "Cover letter" },
-                ]}
-              />
-            )}
-            {!pro && doc === "resume" && (
-              <Pill tone={freeLeft > 0 ? "muted" : "danger"}>
-                <span className="num">{Math.max(0, freeLeft)}</span> of 3 free tailored resumes left
-              </Pill>
-            )}
-            {!guest && (
-              <Button asChild variant="ghost" size="sm">
-                <Link to={`/app/jobs/${job.id}`}>
-                  View posting <ArrowRight />
-                </Link>
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
+      <StudioHeader
+        job={job}
+        jobOptions={jobOptions}
+        versions={state.resume.versions}
+        activeVersionId={state.resume.activeVersionId}
+        onSelectJob={(id) => setParams({ job: id })}
+        onMakeDefault={(id) => update((s) => void (s.resume.activeVersionId = id))}
+        onDeleteVersion={setConfirmDelete}
+        doc={doc}
+        onToggleDoc={() => setDoc(doc === "resume" ? "letter" : "resume")}
+        sections={doc === "resume" ? sections : []}
+        onAddJob={() => setImportOpen(true)}
+        guest={guest}
+      />
 
       {doc === "letter" ? (
         <CoverLetter embedded />
@@ -574,10 +513,43 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
                   <RotateCcw /> Undo my edits
                 </Button>
               )}
-              <p className="ml-auto hidden text-xs text-muted-foreground md:block">
-                <PenLine className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-                Point at a line to see Wren's suggestion. Click a line to edit it.
+              <p className="ml-auto hidden items-center gap-1.5 text-xs text-muted-foreground lg:flex">
+                <PenLine className="h-3.5 w-3.5" aria-hidden />
+                Point at a line for Wren's suggestion, or click to edit.
               </p>
+              {!pro && (
+                <Pill tone={freeLeft > 0 ? "muted" : "danger"} className="shrink-0">
+                  <span className="num">{Math.max(0, freeLeft)}</span> of 3 free left
+                </Pill>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="shrink-0">
+                    <Download /> Download
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      withAccount(() => {
+                        if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
+                      })
+                    }
+                  >
+                    <Printer className="mr-2 h-4 w-4" /> PDF (print to PDF)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      withAccount(() => {
+                        downloadText(`${fileBase}_Resume.txt`, resumeToText(built));
+                        toast.success("Plain text resume downloaded");
+                      })
+                    }
+                  >
+                    <FileDown className="mr-2 h-4 w-4" /> Plain text (.txt)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             <FormatBar
@@ -634,16 +606,6 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
                   "Use a suggestion or type on the document, then save it as a version."
                 )}
               </div>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  withAccount(() => {
-                    if (!printResume(built, fileBase, state.resume.templateId, state.profile.headline, format)) toast.error("Your browser blocked the print window. Allow pop ups and try again.");
-                  })
-                }
-              >
-                <Printer /> Download PDF
-              </Button>
               <Button disabled={!touched} onClick={() => void saveVersion()}>
                 <Save /> {savedVersion ? "Update version" : "Save as new version"}
               </Button>
@@ -791,23 +753,6 @@ function StudioFor({ job }: { job: NonNullable<ReturnType<typeof jobById>> }) {
                     <TranslatorPanel job={job} live={live} />
                   </AccordionContent>
                 </AccordionItem>
-
-                {!guest && (
-                <AccordionItem value="versions" className="border-b-0">
-                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
-                    Saved versions <span className="ml-1 font-normal text-muted-foreground">({state.resume.versions.length})</span>
-                  </AccordionTrigger>
-                  <AccordionContent className="px-4">
-                    <VersionsPanel
-                      versions={state.resume.versions}
-                      activeId={state.resume.activeVersionId}
-                      pro={pro}
-                      onMakeDefault={(id) => update((s) => void (s.resume.activeVersionId = id))}
-                      onDelete={setConfirmDelete}
-                    />
-                  </AccordionContent>
-                </AccordionItem>
-                )}
               </Accordion>
             </Card>
           </div>

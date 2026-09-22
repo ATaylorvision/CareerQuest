@@ -78,6 +78,56 @@ export function ScoreRing({ value, size = 56, stroke = 5, label, sub, tone, clas
   );
 }
 
+/**
+ * A friendlier read on a score than a thin ring: a wide dial with the number
+ * sitting under the arc instead of inside it, so it reads at a glance.
+ */
+export function ScoreGauge({ value, bandLabel, width = 200, className }: { value: number; bandLabel: string; width?: number; className?: string }) {
+  const shown = useCountUp(value);
+  const stroke = Math.round(width * 0.075);
+  const r = width / 2 - stroke;
+  const cx = width / 2;
+  const cy = width / 2;
+  const arcLen = Math.PI * r;
+  const pct = Math.max(0, Math.min(100, value)) / 100;
+  const angle = Math.PI - pct * Math.PI;
+  const point = (a: number) => [cx + r * Math.cos(a), cy - r * Math.sin(a)] as const;
+  const [ex, ey] = point(angle);
+  const t = scoreTone(value);
+  const gradId = "score-gauge-grad";
+  return (
+    <div className={cn("flex flex-col items-center", className)} style={{ width }} role="img" aria-label={`${bandLabel} score, ${value} out of 100`}>
+      <svg width={width} height={width / 2 + stroke} viewBox={`0 0 ${width} ${width / 2 + stroke}`}>
+        <defs>
+          <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="hsl(var(--danger))" />
+            <stop offset="50%" stopColor="hsl(var(--warning))" />
+            <stop offset="100%" stopColor="hsl(var(--success))" />
+          </linearGradient>
+        </defs>
+        <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="hsl(var(--muted))" strokeWidth={stroke} strokeLinecap="round" />
+        <path
+          d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+          fill="none"
+          stroke={`url(#${gradId})`}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={arcLen}
+          strokeDashoffset={arcLen - (shown / 100) * arcLen}
+          style={{ transition: "stroke-dashoffset 220ms ease-out" }}
+        />
+        <circle cx={ex} cy={ey} r={stroke * 0.55} fill="white" stroke={RING_COLOR[t]} strokeWidth={2.5} />
+        <text x={stroke * 0.3} y={width / 2 + stroke - 2} className="fill-muted-foreground text-[10px]">0</text>
+        <text x={width - stroke * 0.3} y={width / 2 + stroke - 2} textAnchor="end" className="fill-muted-foreground text-[10px]">100</text>
+      </svg>
+      <div className="-mt-2 flex flex-col items-center leading-none">
+        <span className="num text-4xl font-bold">{shown}</span>
+        <span className="mt-1.5 text-sm font-medium" style={{ color: RING_COLOR[t] }}>{bandLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 export function ScoreBar({ value, max = 100, tone, className, height = 8, label }: { value: number; max?: number; tone?: string; className?: string; height?: number; label?: string }) {
   const [w, setW] = useState(0);
   useEffect(() => {

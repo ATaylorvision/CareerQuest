@@ -174,8 +174,8 @@ export function ResumeDocument({
 
   const live = (id: string) => (text: string | null) => onLive?.(id, text);
 
-  const H = ({ children }: { children: React.ReactNode }) => (
-    <h3 className="mb-1.5 mt-5 border-b border-neutral-400 pb-0.5 text-xs font-semibold tracking-[0.15em]">{children}</h3>
+  const H = ({ id, children }: { id?: string; children: React.ReactNode }) => (
+    <h3 id={id} className="mb-1.5 mt-5 scroll-mt-32 border-b border-neutral-400 pb-0.5 text-xs font-semibold tracking-[0.15em]">{children}</h3>
   );
 
   return (
@@ -184,6 +184,7 @@ export function ResumeDocument({
       onBlurCapture={(e) => isText(e) && setEditing(false)}
       className="mx-auto max-w-[720px] rounded-lg border bg-white p-6 font-serif text-[13px] leading-relaxed text-neutral-900 shadow-card sm:p-10"
     >
+      <div id="section-contact" className="scroll-mt-32" />
       <EditableText
         as="h2"
         fieldId="contact.name"
@@ -206,7 +207,7 @@ export function ResumeDocument({
         <EditableText fieldId="contact.email" onLive={live("contact.email")} value={r.email} label="Your email address" placeholder="Email" onCommit={(v) => onContactEdit("email", v)} />
       </div>
 
-      <H>SUMMARY</H>
+      <H id="section-summary">SUMMARY</H>
       <Suggestable field="summary" hover={hover}>
       <EditableText
         as="p"
@@ -221,7 +222,7 @@ export function ResumeDocument({
       />
       </Suggestable>
 
-      <H>EXPERIENCE</H>
+      <H id="section-experience">EXPERIENCE</H>
       {r.roles.map((role) => (
         <div key={role.id} className="mb-3">
           <div className="flex flex-wrap justify-between gap-x-4">
@@ -250,7 +251,7 @@ export function ResumeDocument({
         </div>
       ))}
 
-      <H>EDUCATION</H>
+      <H id="section-education">EDUCATION</H>
       <EditableText
         as="p"
         fieldId="education"
@@ -266,12 +267,12 @@ export function ResumeDocument({
       )}
       {r.certsOwnSection && (
         <>
-          <H>CERTIFICATIONS</H>
+          <H id="section-certifications">CERTIFICATIONS</H>
           <EditableText as="p" fieldId="certifications" onLive={live("certifications")} value={r.certifications.join(" | ")} label="Certifications" onCommit={(v) => onEdit("certifications", v)} className={cn("block", marks("certifications"))} />
         </>
       )}
 
-      <H>SKILLS</H>
+      <H id="section-skills">SKILLS</H>
       <Suggestable field="skills" hover={hover}>
       <EditableText
         as="p"

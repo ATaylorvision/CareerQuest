@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { ArrowRight, Check, ChevronDown, CircleHelp, Loader2, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ScoreGauge } from "@/components/common";
 import { atsBand, type AtsResult, type KeywordResult, type KeywordStatus } from "@/lib/ats";
 import type { KeywordSource } from "@/hooks/useJobKeywords";
 import { cn } from "@/lib/utils";
@@ -10,44 +11,6 @@ import { cn } from "@/lib/utils";
 /* ------------------------------------------------------------------ */
 /* Score                                                               */
 /* ------------------------------------------------------------------ */
-
-const TONE_STROKE: Record<string, string> = {
-  success: "hsl(var(--success))",
-  primary: "hsl(var(--primary))",
-  warning: "hsl(var(--warning))",
-  danger: "hsl(var(--danger))",
-};
-
-/** A ring that moves the instant the number does. The animated one lags behind typing. */
-function LiveRing({ value, tone }: { value: number; tone: string }) {
-  const size = 84;
-  const stroke = 7;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  return (
-    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={`ATS score estimate ${value} out of 100`}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={stroke} />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={TONE_STROKE[tone]}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c - (value / 100) * c}
-          style={{ transition: "stroke-dashoffset 220ms ease-out, stroke 220ms" }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
-        <span className="num text-2xl font-semibold">{value}</span>
-        <span className="mt-0.5 text-[10px] text-muted-foreground">of 100</span>
-      </div>
-    </div>
-  );
-}
 
 export function AtsScorePanel({ result, onJump, hasJob }: { result: AtsResult; onJump: (field?: string) => void; hasJob: boolean }) {
   const [all, setAll] = useState(false);
@@ -58,18 +21,15 @@ export function AtsScorePanel({ result, onJump, hasJob }: { result: AtsResult; o
 
   return (
     <div>
-      <div className="flex items-center gap-4">
-        <LiveRing value={result.total} tone={band.tone} />
-        <div className="min-w-0">
-          <div className="text-sm font-semibold">{band.label}</div>
-          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-            {result.general
-              ? hasJob
-                ? "Scored on the resume alone. Keyword coverage joins in once we have read this posting."
-                : "Scored on the resume alone. Open a job to add keyword coverage."
-              : "Scored against this posting. It moves as you type."}
-          </p>
-        </div>
+      <div className="flex flex-col items-center">
+        <ScoreGauge value={result.total} bandLabel={band.label} width={180} />
+        <p className="-mt-1 max-w-[220px] text-center text-xs leading-snug text-muted-foreground">
+          {result.general
+            ? hasJob
+              ? "Scored on the resume alone. Keyword coverage joins in once we have read this posting."
+              : "Scored on the resume alone. Open a job to add keyword coverage."
+            : "Scored against this posting. It moves as you type."}
+        </p>
       </div>
 
       <ul className="mt-4 space-y-2.5">
