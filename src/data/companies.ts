@@ -13,6 +13,8 @@ export interface Company {
   hiringTrend: string;
   careerChangers: string;
   about: string;
+  /** The company's own site, when it is known. Set by hand for a job someone added themselves, or read from the posting. */
+  website?: string;
   isAgency?: boolean;
   initials: string;
   hue: number;

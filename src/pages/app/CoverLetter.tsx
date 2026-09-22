@@ -266,9 +266,11 @@ export default function CoverLetter({ embedded }: { embedded?: boolean } = {}) {
     toast.success("Cover letter saved", { description: `It will be attached when you apply to ${job.company.name}.` });
   };
 
-  const jobOptions = Array.from(new Set(["j01", ...state.applications.map((a) => a.jobId), ...JOBS.filter((j) => j.match >= 85).map((j) => j.id)]))
-    .map((id) => jobById(id)!)
-    .filter((j) => j.legit.badge !== "ghost");
+  // "j01" is the sample account's showcase job, and only exists there: a live account's
+  // job cache never contains it, so it is included only when not live.
+  const jobOptions = Array.from(new Set([...(live ? [] : ["j01"]), ...state.applications.map((a) => a.jobId), ...JOBS.filter((j) => j.match >= 85).map((j) => j.id)]))
+    .map((id) => jobById(id))
+    .filter((j): j is Job => !!j && j.legit.badge !== "ghost");
 
   return (
     <div>

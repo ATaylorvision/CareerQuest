@@ -96,10 +96,12 @@ test("weak matches are kept aside so they can be shown on request", () => {
 });
 test("a job you added yourself never appears in matches", () => assert.equal(splitMatches([job({ id: "a", imported: true })], ctx()).shown.length, 0));
 
-// once shown, always shown
-test("a match already shown stays even if it is now too far, old, cheap and weak", () => assert.equal(whyExcluded(job({ id: "a", kept: true, distanceMiles: 900, location: "Reno, NV", postedDaysAgo: 80, salary: [10000, 20000], match: 20 }), ctx()), null));
+// once shown, always shown -- except location, which is never grandfathered in
+test("a match already shown stays even if it is now old, cheap and weak", () => assert.equal(whyExcluded(job({ id: "a", kept: true, postedDaysAgo: 80, salary: [10000, 20000], match: 20 }), ctx()), null));
 test("a kept match still goes away once you apply to it", () => assert.equal(whyExcluded(job({ id: "a", kept: true }), ctx({}, [{ jobId: "a", column: "applied", receipt: { submittedAt: "2026-01-01" } }])), "applied"));
 test("a kept match still goes away when you mark it not for me", () => assert.equal(whyExcluded(job({ id: "a", kept: true }), contextFor({ ...(state() as object), dismissedJobIds: ["a"] } as never)), "dismissed"));
+test("a kept onsite match drops out once it is too far from your updated home base", () => assert.equal(whyExcluded(job({ id: "a", kept: true, distanceMiles: 900, location: "Reno, NV" }), ctx()), "far"));
+test("a kept remote match still stays when you are open to remote", () => assert.equal(whyExcluded(job({ id: "a", kept: true, mode: "Remote", distanceMiles: null, location: "Remote" }), ctx()), null));
 
 // a short list is topped up, never left empty
 test("with few good matches, the best fair ones fill the list", () => {

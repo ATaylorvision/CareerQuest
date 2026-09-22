@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, ClipboardPaste, Loader2 } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronUp, ClipboardPaste, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,8 @@ import { api, ApiError } from "@/live/api";
 import { saveApplication } from "@/live/persist";
 import { useLive } from "@/live/LiveProvider";
 import { applicationFromImport } from "@/lib/tracker";
+import { useUrlLookup } from "@/hooks/useUrlLookup";
+import { guessSalaryFromText } from "@/lib/salaryGuess";
 import type { Column } from "@/data/applications";
 import { cn } from "@/lib/utils";
 
@@ -46,10 +48,16 @@ export function ImportJobDialog({ open, onOpenChange, onAdded }: { open: boolean
   const [location, setLocation] = useState("");
   const [url, setUrl] = useState("");
   const [description, setDescription] = useState("");
+  const [salaryMin, setSalaryMin] = useState("");
+  const [salaryMax, setSalaryMax] = useState("");
+  const [companyWebsite, setCompanyWebsite] = useState("");
+  const [employerAbout, setEmployerAbout] = useState("");
+  const [showMore, setShowMore] = useState(false);
   const [stage, setStage] = useState<Column>("saved");
   const [appliedOn, setAppliedOn] = useState(today());
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { lookup, busy: looking } = useUrlLookup();
   // Set once the job exists, so a retry after a later step fails never adds it twice.
   const created = useRef<string | null>(null);
 
@@ -63,10 +71,49 @@ export function ImportJobDialog({ open, onOpenChange, onAdded }: { open: boolean
     setLocation("");
     setUrl("");
     setDescription("");
+    setSalaryMin("");
+    setSalaryMax("");
+    setCompanyWebsite("");
+    setEmployerAbout("");
+    setShowMore(false);
     setStage("saved");
     setAppliedOn(today());
     setError(null);
     created.current = null;
+  };
+
+  // The link is the fastest way in: look it up and fill in whatever it finds,
+  // without overwriting anything the person already typed themselves.
+  const runLookup = async () => {
+    if (!url.trim()) return;
+    const found = await lookup(url.trim());
+    if (!found?.found) return;
+    if (found.title && !title.trim()) setTitle(found.title);
+    if (found.company && !company.trim()) setCompany(found.company);
+    if (found.location && !location.trim()) setLocation(found.location);
+    if (found.description && !description.trim()) setDescription(found.description);
+    if (found.salaryMin != null && found.salaryMax != null && !salaryMin && !salaryMax) {
+      setSalaryMin(String(found.salaryMin));
+      setSalaryMax(String(found.salaryMax));
+      setShowMore(true);
+    }
+    if (found.companyWebsite && !companyWebsite.trim()) {
+      setCompanyWebsite(found.companyWebsite);
+      setShowMore(true);
+    }
+    if (found.title || found.company || found.description) toast.success("Filled in what we could find", { description: "Check it over, everything here can still be edited." });
+  };
+
+  const onDescriptionChange = (text: string) => {
+    setDescription(text);
+    if (!salaryMin && !salaryMax) {
+      const guess = guessSalaryFromText(text);
+      if (guess) {
+        setSalaryMin(String(guess[0]));
+        setSalaryMax(String(guess[1]));
+        setShowMore(true);
+      }
+    }
   };
 
   const submit = async (then: "track" | "tailor") => {
@@ -74,7 +121,18 @@ export function ImportJobDialog({ open, onOpenChange, onAdded }: { open: boolean
     try {
       if (!created.current) {
         setBusy("Saving the job");
-        const out = await api<{ jobId: string }>("studio", { action: "importJob", title, company, location, url, description });
+        const out = await api<{ jobId: string }>("studio", {
+          action: "importJob",
+          title,
+          company,
+          location,
+          url,
+          description,
+          salaryMin: salaryMin ? Number(salaryMin) : undefined,
+          salaryMax: salaryMax ? Number(salaryMax) : undefined,
+          companyWebsite: companyWebsite || undefined,
+          employerAbout: employerAbout || undefined,
+        });
         created.current = out.jobId;
       }
       const jobId = created.current;
@@ -156,11 +214,17 @@ export function ImportJobDialog({ open, onOpenChange, onAdded }: { open: boolean
                 </Label>
                 <Input id="ij-location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Providence, RI, or Remote" maxLength={120} autoComplete="off" />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="ij-url">
                   Link to the posting <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
-                <Input id="ij-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" inputMode="url" autoComplete="off" />
+                <div className="flex gap-2">
+                  <Input id="ij-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" inputMode="url" autoComplete="off" className="flex-1" />
+                  <Button type="button" variant="outline" disabled={!url.trim() || looking} onClick={() => void runLookup()}>
+                    {looking ? <Loader2 className="animate-spin" /> : <Search />} {looking ? "Looking it up" : "Look it up"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">We only open this link when you press "Look it up", to try to fill in the title, description, salary, and company site for you.</p>
               </div>
             </div>
 
@@ -169,18 +233,47 @@ export function ImportJobDialog({ open, onOpenChange, onAdded }: { open: boolean
               <Textarea
                 id="ij-desc"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => onDescriptionChange(e.target.value)}
                 rows={8}
                 placeholder="Copy the whole description from the employer's page and paste it here. The more of it, the better we can match your resume to it."
                 aria-describedby="ij-desc-help"
               />
               <p id="ij-desc-help" className={cn("text-xs", chars > 0 && chars < MIN_DESCRIPTION ? "text-warning" : "text-muted-foreground")}>
                 {chars === 0
-                  ? "We only read what you paste. We never open the link."
+                  ? "Paste it here, or use \"Look it up\" above."
                   : chars < MIN_DESCRIPTION
                     ? `${chars} characters so far. Paste the whole description, not just a line or two.`
                     : `${chars.toLocaleString()} characters. That is plenty.`}
               </p>
+            </div>
+
+            <div>
+              <button type="button" onClick={() => setShowMore((v) => !v)} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                {showMore ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                Salary, company site, and notes about the employer <span className="font-normal text-muted-foreground">(optional)</span>
+              </button>
+              {showMore && (
+                <div className="mt-3 space-y-3 rounded-lg border bg-muted/20 p-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ij-sal-min">Salary, low end</Label>
+                      <Input id="ij-sal-min" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value.replace(/[^\d]/g, ""))} placeholder="65000" inputMode="numeric" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ij-sal-max">Salary, high end</Label>
+                      <Input id="ij-sal-max" value={salaryMax} onChange={(e) => setSalaryMax(e.target.value.replace(/[^\d]/g, ""))} placeholder="80000" inputMode="numeric" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ij-website">Company website</Label>
+                    <Input id="ij-website" value={companyWebsite} onChange={(e) => setCompanyWebsite(e.target.value)} placeholder="https://" inputMode="url" autoComplete="off" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ij-about">About the employer</Label>
+                    <Textarea id="ij-about" value={employerAbout} onChange={(e) => setEmployerAbout(e.target.value.slice(0, 2000))} rows={3} placeholder="A line or two on what the company does." />
+                  </div>
+                </div>
+              )}
             </div>
 
             <fieldset className="space-y-2">

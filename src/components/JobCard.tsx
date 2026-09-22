@@ -14,6 +14,13 @@ import { useLive } from "@/live/LiveProvider";
 import { recordSignal } from "@/live/signals";
 import { cn } from "@/lib/utils";
 
+/** The first two or three sentences of a job summary, so a match card says what the role actually is at a glance. */
+export function roleDescription(text: string, maxSentences = 3): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const sentences = flat.match(/[^.!?]+[.!?]+(\s|$)/g) ?? [flat];
+  return sentences.slice(0, maxSentences).join("").trim();
+}
+
 /** Scores a listing that is on the board but has no score for this person, so they can see how it fits. */
 export function useCheckFit() {
   const { reloadJobs } = useLive();
@@ -154,6 +161,8 @@ export function JobCard({ job, compact, index = 0 }: { job: Job; compact?: boole
               </Button>
             </p>
           )}
+
+          {!compact && job.summary && <p className="mt-3 line-clamp-3 text-sm text-foreground/80">{roleDescription(job.summary)}</p>}
 
           {!compact && !job.unscored && (
             <p className="mt-3 flex gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">

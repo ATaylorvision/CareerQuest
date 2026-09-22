@@ -79,12 +79,10 @@ export function namesPlace(location: string, places: string[]): boolean {
 export function whyExcluded(job: Job, c: Context): Exclusion | null {
   if (c.applied.has(job.id)) return "applied";
   if (c.dismissed.has(job.id)) return "dismissed";
-  // Once a match has been shown to someone it is theirs. Rules can keep new ones out, but they never take one away.
-  if (job.kept) return null;
-  if (job.legit.score < c.legitThreshold || job.legit.badge === "ghost") return "not-real";
-  if (job.postedDaysAgo > MAX_AGE_DAYS) return "old";
 
   // Where. A listing that does not say is treated as onsite, because that is what it is until it says otherwise.
+  // This runs before the "kept" bypass below and is never grandfathered in: home base or reach can change
+  // after a job was first shown, and a hybrid or onsite role someone can no longer reach should drop out.
   const remote = job.mode === "Remote";
   if (remote) {
     if (!c.wantsRemote) return "remote";
@@ -98,6 +96,11 @@ export function whyExcluded(job: Job, c: Context): Exclusion | null {
       }
     }
   }
+
+  // Once a match has been shown to someone it is theirs, other than location above. Rules can keep new ones out, but they never take one away.
+  if (job.kept) return null;
+  if (job.legit.score < c.legitThreshold || job.legit.badge === "ghost") return "not-real";
+  if (job.postedDaysAgo > MAX_AGE_DAYS) return "old";
 
   // Pay. A listing that does not say what it pays stays, and is marked as unlisted.
   if (job.salary && job.salary[1] < c.floor) return "pay";

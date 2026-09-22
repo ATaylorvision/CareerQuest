@@ -15,6 +15,10 @@ export interface JobRow {
   salary_max: number | null;
   description: string | null;
   apply_url: string | null;
+  /** The employer's own site. Filled by hand for a job someone added, or read from the posting when we can. */
+  company_domain: string | null;
+  /** A short note on the employer, filled by hand for a job someone added themselves. */
+  employer_about: string | null;
   employer_posted: boolean | null;
   posted_at: string | null;
   ats_provider: string | null;
@@ -74,7 +78,7 @@ function hue(name: string) {
   return h;
 }
 
-export function companyFor(name: string, agency: boolean): Company {
+export function companyFor(name: string, agency: boolean, website?: string | null, about?: string | null): Company {
   const words = name.replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
   return {
     id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
@@ -88,7 +92,8 @@ export function companyFor(name: string, agency: boolean): Company {
     layoffs: "",
     hiringTrend: "",
     careerChangers: "",
-    about: "",
+    about: about || "",
+    website: website || undefined,
     isAgency: agency,
     initials: (words[0]?.[0] ?? "?").toUpperCase() + (words[1]?.[0] ?? "").toUpperCase(),
     hue: hue(name),
@@ -113,7 +118,7 @@ export function rowToJob(row: JobRow, match: MatchRow, unscored = false): Job {
   return {
     id: row.id,
     title: row.title,
-    company: companyFor(row.company, row.employer_posted === false),
+    company: companyFor(row.company, row.employer_posted === false, row.company_domain, row.employer_about),
     location: row.location || "Location not listed",
     mode: MODE[row.remote_type ?? "unknown"] ?? "Not stated",
     salary,

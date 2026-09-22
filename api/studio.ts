@@ -2,6 +2,7 @@ import { HttpError, admin, body, route, quota, requireMember, type AuthedUser } 
 import { DEEP_MODEL, FAST_MODEL, numbersSupported, structured } from "./_lib/claude.js";
 import { containsRun, extractKeywordsBasic, tokens, verbatim } from "../src/lib/keywords.js";
 import { remoteType } from "./_lib/sources.js";
+import { parseJobPage, safeFetchText } from "./_lib/linkLookup.js";
 import { randomUUID } from "node:crypto";
 import { cleanSnapshot, newNames, scopeStretch, textOf, validateOptions, validateProposals, type RawProposal } from "./_lib/agentGuard.js";
 
@@ -476,13 +477,28 @@ const oneLine = (s: unknown, max: number) => String(s ?? "").replace(/\s+/g, " "
 /** The most jobs one person can keep, so the table cannot be stuffed. */
 const MAX_IMPORTS = 200;
 
+/** Turns a person supplied web address into either a URL to store or a rejection, never left ambiguous. */
+function parseLink(raw: unknown, max: number): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    throw new HttpError(400, "That link does not look right. It should start with https://");
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") throw new HttpError(400, "That link does not look right. It should start with https://");
+  return u.toString().slice(0, max);
+}
+
 /**
- * Saves a job the person pasted in, private to them. Nothing is fetched from
- * the link: it is only kept so they can find the posting again. Fetching an
- * address a stranger supplies would let them point our server at anything, so
- * the description they paste is the only text we ever read.
+ * Saves a job the person pasted in, private to them. The link is kept so they can find
+ * the posting again, and is never fetched here. If they also fill in a salary, a
+ * company site, or a note on the employer, those are kept as they typed them. Reading
+ * the link itself, to fill those in automatically, is a separate action (lookupUrl)
+ * that only runs when the person presses the button for it.
  */
-async function importJob(user: AuthedUser, p: { title?: string; company?: string; location?: string; url?: string; description?: string }) {
+async function importJob(user: AuthedUser, p: Payload) {
   const title = oneLine(p.title, 140);
   const company = oneLine(p.company, 120);
   const location = oneLine(p.location, 120);
@@ -492,16 +508,13 @@ async function importJob(user: AuthedUser, p: { title?: string; company?: string
   if (company.length < 2) throw new HttpError(400, "Which company is it with?");
   if (description.length < 200) throw new HttpError(400, "Paste the whole job description from the employer's page, not just a line or two. It helps us read what they really ask for.");
 
-  let url: string | null = null;
-  if (String(p.url ?? "").trim()) {
-    try {
-      const u = new URL(String(p.url).trim());
-      if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("scheme");
-      url = u.toString().slice(0, 500);
-    } catch {
-      throw new HttpError(400, "That link does not look right. It should start with https://");
-    }
-  }
+  const url = parseLink(p.url, 500);
+  const companyWebsite = parseLink(p.companyWebsite, 300);
+  const salaryMin = p.salaryMin == null ? null : Math.round(Number(p.salaryMin));
+  const salaryMax = p.salaryMax == null ? null : Math.round(Number(p.salaryMax));
+  if ((salaryMin != null && (!Number.isFinite(salaryMin) || salaryMin < 0)) || (salaryMax != null && (!Number.isFinite(salaryMax) || salaryMax < 0))) throw new HttpError(400, "Salary should be a positive number.");
+  if (salaryMin != null && salaryMax != null && salaryMin > salaryMax) throw new HttpError(400, "The low end of the salary should not be more than the high end.");
+  const employerAbout = String(p.employerAbout ?? "").replace(/\r/g, "").trim().slice(0, 2000) || null;
 
   const db = admin();
   await quota(user, "import", 30, "adding jobs");
@@ -521,6 +534,10 @@ async function importJob(user: AuthedUser, p: { title?: string; company?: string
     remote_type: mode,
     description,
     apply_url: url,
+    salary_min: salaryMin,
+    salary_max: salaryMax,
+    company_domain: companyWebsite,
+    employer_about: employerAbout,
     employer_posted: true,
     posted_at: new Date().toISOString(),
     owner_id: user.id,
@@ -549,6 +566,98 @@ async function importJob(user: AuthedUser, p: { title?: string; company?: string
     throw new HttpError(500, "We could not save that job. Please try again.");
   }
   return { jobId: id, mode };
+}
+
+/**
+ * Edits a job the person added themselves: title, company, location, the link, the
+ * description, salary, the company's site, and a short note on the employer. Only the
+ * owner can, and only for a job that is theirs, same as removeJob below.
+ */
+async function updateJob(user: AuthedUser, p: Payload) {
+  const jobId = String(p.jobId ?? "");
+  if (!jobId) throw new HttpError(400, "Which job?");
+  await quota(user, "updateJob", 60, "editing jobs");
+  const db = admin();
+  const { data: job } = await db.from("jobs").select("id, owner_id, title, description").eq("id", jobId).maybeSingle();
+  if (!job || job.owner_id !== user.id) throw new HttpError(404, "We could not find that job.");
+
+  const patch: Record<string, unknown> = {};
+
+  if (p.title !== undefined) {
+    const title = oneLine(p.title, 140);
+    if (title.length < 2) throw new HttpError(400, "What is the job title?");
+    patch.title = title;
+  }
+  if (p.company !== undefined) {
+    const company = oneLine(p.company, 120);
+    if (company.length < 2) throw new HttpError(400, "Which company is it with?");
+    patch.company = company;
+  }
+  if (p.location !== undefined) patch.location = oneLine(p.location, 120) || null;
+
+  let descriptionChanged = false;
+  if (p.description !== undefined) {
+    const description = String(p.description).replace(/\r/g, "").trim().slice(0, 20000);
+    if (description.length < 200) throw new HttpError(400, "Paste the whole job description, not just a line or two.");
+    descriptionChanged = description !== job.description;
+    patch.description = description;
+  }
+  if (patch.title || patch.location || patch.description) {
+    patch.remote_type = remoteType({
+      title: (patch.title as string) ?? job.title,
+      description: (patch.description as string) ?? "",
+      location: (patch.location as string) ?? "",
+      remote_hint: false,
+    });
+  }
+
+  if (p.url !== undefined) patch.apply_url = parseLink(p.url, 500);
+  if (p.companyWebsite !== undefined) patch.company_domain = parseLink(p.companyWebsite, 300);
+
+  if (p.salaryMin !== undefined || p.salaryMax !== undefined) {
+    const min = p.salaryMin == null ? null : Math.round(Number(p.salaryMin));
+    const max = p.salaryMax == null ? null : Math.round(Number(p.salaryMax));
+    if ((min != null && (!Number.isFinite(min) || min < 0)) || (max != null && (!Number.isFinite(max) || max < 0))) throw new HttpError(400, "Salary should be a positive number.");
+    if (min != null && max != null && min > max) throw new HttpError(400, "The low end of the salary should not be more than the high end.");
+    patch.salary_min = min;
+    patch.salary_max = max;
+  }
+
+  if (p.employerAbout !== undefined) patch.employer_about = String(p.employerAbout).replace(/\r/g, "").trim().slice(0, 2000) || null;
+
+  if (Object.keys(patch).length === 0) return { ok: true, rescored: false };
+
+  const { error } = await db.from("jobs").update(patch).eq("id", jobId).eq("owner_id", user.id);
+  if (error) {
+    console.error("[updateJob]", error.message);
+    throw new HttpError(500, "We could not save those changes. Please try again.");
+  }
+
+  // A changed description invalidates the old read, so the next open re-scores it against the resume.
+  if (descriptionChanged) {
+    await db
+      .from("job_matches")
+      .update({ score: 0, breakdown: null, why: null, gaps: [], translator: { field: "supply", category: "Operations", enriched: false } })
+      .eq("user_id", user.id)
+      .eq("job_id", jobId);
+  }
+  return { ok: true, rescored: descriptionChanged };
+}
+
+/**
+ * Reads a job posting link the person is about to add, so the title, company,
+ * description, salary and company site can be filled in for them. Best effort: a
+ * page we cannot read, or one with nothing recognizable on it, comes back empty
+ * rather than as an error, since the person can still paste everything by hand.
+ */
+async function lookupUrl(user: AuthedUser, p: Payload) {
+  await quota(user, "urlLookup", 20, "looking up a job link");
+  const url = parseLink(p.url, 2000);
+  if (!url) throw new HttpError(400, "Paste the link to the posting first.");
+  const fetched = await safeFetchText(new URL(url)).catch(() => null);
+  if (!fetched) return { found: false as const };
+  const parsed = parseJobPage(fetched.text, new URL(fetched.finalUrl));
+  return { found: true as const, ...parsed };
 }
 
 /**
@@ -777,6 +886,10 @@ interface Payload {
   resume?: unknown;
   target?: string;
   notes?: string;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  companyWebsite?: string;
+  employerAbout?: string;
 }
 
 export default route(async (req, _res, user) => {
@@ -809,6 +922,10 @@ export default route(async (req, _res, user) => {
       return keywords(user, p.jobId ?? "");
     case "importJob":
       return importJob(user, p);
+    case "updateJob":
+      return updateJob(user, p);
+    case "lookupUrl":
+      return lookupUrl(user, p);
     case "summary":
       return summary(user, { resume: p.resume, target: p.target });
     case "emailResume":

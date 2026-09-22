@@ -681,3 +681,12 @@ create policy "own rows" on public.match_signals for all using (user_id = auth.u
 -- preference fields. Billing, staff and guest columns stay server-only.
 -- ---------------------------------------------------------------
 grant update (home_lat, home_lng, home_geocoded_for, anchors, salary_ceiling, target_other) on public.profiles to authenticated;
+
+-- ---------------------------------------------------------------
+-- A person can fill in what a listing did not give them: salary, a
+-- company website, and a short note on the employer. company_domain
+-- already existed for the company's own site; this adds the note.
+-- Editing goes through the server (api/studio.ts updateJob), which
+-- checks owner_id, so this is not opened up for direct client writes.
+-- ---------------------------------------------------------------
+alter table public.jobs add column if not exists employer_about text;

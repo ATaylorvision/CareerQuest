@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, ClipboardPaste, FileText, GripVertical, Lock, MessagesSquare, MoreHorizontal, Receipt as ReceiptIcon, Send, Trash2, Users } from "lucide-react";
+import { ArrowRight, ClipboardPaste, FileText, GripVertical, Lock, MessagesSquare, MoreHorizontal, PenLine, Receipt as ReceiptIcon, Send, Trash2, Users } from "lucide-react";
 import { CompanyLogo, PageHeader } from "@/components/common";
 import { MethodBadge, Pill, VerifiedMark } from "@/components/status";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { api } from "@/live/api";
 import { useLive } from "@/live/LiveProvider";
 import { StatusSummary } from "@/components/tracker/StatusSummary";
 import { ImportJobDialog } from "@/components/ImportJobDialog";
+import { EditJobDialog } from "@/components/EditJobDialog";
 import { COLUMNS, EVENT_META, type Application, type Column, type EventType } from "@/data/applications";
 import { jobById } from "@/data/jobs";
 import { trackerStats } from "@/lib/tracker";
@@ -56,6 +57,7 @@ function AppCard({ app, onDragStart, dragging }: { app: Application; onDragStart
   const { state, update } = useStore();
   const { reloadJobs } = useLive();
   const nav = useNavigate();
+  const [editOpen, setEditOpen] = useState(false);
 
   // Something the person added themselves can be taken back out completely. What
   // CareerQuest sent for them is a record, so it stays.
@@ -137,6 +139,7 @@ function AppCard({ app, onDragStart, dragging }: { app: Application; onDragStart
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => nav(`/app/jobs/${job.id}`)}>Open job</DropdownMenuItem>
+            {job.imported && <DropdownMenuItem onSelect={() => setEditOpen(true)}><PenLine className="mr-2 h-4 w-4" /> Edit job details</DropdownMenuItem>}
             {(!app.receipt || job.imported) && (
               <DropdownMenuItem className="text-danger" onSelect={() => void removeCard()}>
                 <Trash2 className="mr-2 h-4 w-4" /> Remove
@@ -145,6 +148,7 @@ function AppCard({ app, onDragStart, dragging }: { app: Application; onDragStart
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {job.imported && <EditJobDialog job={job} open={editOpen} onOpenChange={setEditOpen} />}
     </article>
   );
 }

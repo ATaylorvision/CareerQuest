@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronUp, CircleDashed, ExternalLink, HandHeart, Languages, Map as MapIcon, Undo2, XCircle } from "lucide-react";
+import { AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronUp, CircleDashed, ExternalLink, Globe, HandHeart, Languages, Map as MapIcon, PenLine, Undo2, XCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useStore } from "@/store/AppStore";
@@ -11,8 +11,9 @@ import { Card, SectionTitle } from "@/components/common";
 import { Pill } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { TranslatorRow } from "@/components/TranslatorRows";
+import { EditJobDialog } from "@/components/EditJobDialog";
 import { SEVERITY_LABEL } from "@/data/gaps";
-import { patchJob, type Job } from "@/data/jobs";
+import { patchJob, salaryText, type Job } from "@/data/jobs";
 import { enrichJob } from "@/live/pipeline";
 import { cn } from "@/lib/utils";
 
@@ -284,16 +285,20 @@ export function LiveGapsCard({ job, loading }: { job: Job; loading: boolean }) {
 }
 
 export function LiveCompanyCard({ job }: { job: Job }) {
+  const [editOpen, setEditOpen] = useState(false);
   const site = job.signals.companySite;
+  // A job someone added themselves never went through an automated careers page check, so that row
+  // would only ever read "Not confirmed yet" for them. It says nothing true, so it is left out.
   const rows: [string, string][] = [
     ["Posted by", job.signals.poster === "agency" ? "A staffing agency" : "The employer"],
-    ["Careers page check", site === "confirmed" ? `Found on their ${job.atsProvider ?? ""} careers page`.replace("  ", " ") : site === "missing" ? "Not found on their careers page" : "Not confirmed yet"],
+    ...(job.imported ? [] : ([["Careers page check", site === "confirmed" ? `Found on their ${job.atsProvider ?? ""} careers page`.replace("  ", " ") : site === "missing" ? "Not found on their careers page" : "Not confirmed yet"]] as [string, string][])),
     ["Listing source", job.source],
-    ["Salary", job.salary ? "Range posted" : "Not posted"],
+    ["Salary", salaryText(job.salary)],
   ];
   return (
     <Card>
-      <SectionTitle icon={Building2}>About this employer</SectionTitle>
+      <SectionTitle icon={Building2} right={job.imported ? <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}><PenLine /> Edit</Button> : undefined}>About this employer</SectionTitle>
+      {job.company.about && <p className="mb-3 text-sm text-foreground/80">{job.company.about}</p>}
       <dl className="space-y-2.5 text-sm">
         {rows.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-4">
@@ -302,7 +307,13 @@ export function LiveCompanyCard({ job }: { job: Job }) {
           </div>
         ))}
       </dl>
-      <p className="mt-4 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">We only show facts we can check. Company ratings, size, and layoff history are not included because there is no source we can use honestly.</p>
+      {job.company.website && (
+        <a href={job.company.website} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+          <Globe className="h-3.5 w-3.5" /> {job.company.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+        </a>
+      )}
+      {!job.imported && <p className="mt-4 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">We only show facts we can check. Company ratings, size, and layoff history are not included because there is no source we can use honestly.</p>}
+      {job.imported && <EditJobDialog job={job} open={editOpen} onOpenChange={setEditOpen} />}
     </Card>
   );
 }
