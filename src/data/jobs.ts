@@ -1,6 +1,7 @@
 import { COMPANIES, type Company } from "./companies";
 import { GAPS, type Gap } from "./gaps";
 import { daysUntilWeekday } from "@/lib/date";
+import { curveMatch } from "@/lib/matchCurve";
 
 export type WorkMode = "Remote" | "Hybrid" | "Onsite" | "Not stated";
 export type Category =
@@ -564,7 +565,11 @@ function breakdownFor(seed: Seed, idx: number) {
     else experience--;
   }
   const match = Math.round(weighted());
-  return { breakdown: { experience, skills, industry, transferable }, match };
+  // The raw comparison stays as strict as ever; only the number shown is curved upward.
+  return {
+    breakdown: { experience: curveMatch(experience), skills: curveMatch(skills), industry: curveMatch(industry), transferable: curveMatch(transferable) },
+    match: curveMatch(match),
+  };
 }
 
 export const MATCH_WEIGHTS = { experience: 0.3, skills: 0.3, industry: 0.1, transferable: 0.3 };

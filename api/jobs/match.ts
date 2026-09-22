@@ -2,6 +2,7 @@ import { HttpError, admin, body, route, quota } from "../_lib/http.js";
 import { FAST_MODEL, numbersSupported, structured } from "../_lib/claude.js";
 import { GAPS } from "../../src/data/gaps.js";
 import { haversineMiles } from "../_lib/geo.js";
+import { curveMatch } from "../../src/lib/matchCurve.js";
 
 /**
  * Two stages, so the first results show up fast:
@@ -238,11 +239,13 @@ export default route(async (req, _res, user) => {
       const j = job as unknown as { latitude: number | null; longitude: number | null; remote_type: string | null };
       const distance = j.remote_type === "remote" || j.latitude == null || j.longitude == null || !anchors.length ? null : Math.round(Math.min(...anchors.map((a) => haversineMiles(a, { lat: j.latitude!, lng: j.longitude! }))));
       const why = usable(r.why) && numbersSupported(r.why, resumeText, job.description ?? "", job.title) ? r.why : "We could not read enough of this posting to say more. Open it to judge the fit yourself.";
+      // The comparison against the resume stays as strict as ever; only the number shown is curved upward.
+      const rawScore = Math.round(0.3 * experience + 0.3 * skills + 0.1 * industry + 0.3 * transferable);
       rows.push({
         user_id: user.id,
         job_id: job.id,
-        score: Math.round(0.3 * experience + 0.3 * skills + 0.1 * industry + 0.3 * transferable),
-        breakdown: { experience, skills, industry, transferable },
+        score: curveMatch(rawScore),
+        breakdown: { experience: curveMatch(experience), skills: curveMatch(skills), industry: curveMatch(industry), transferable: curveMatch(transferable) },
         why,
         gaps: prev?.gaps ?? [],
         translator: {
