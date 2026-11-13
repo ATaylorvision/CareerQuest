@@ -47,6 +47,7 @@
     "@supabase/supabase-js": "^2.116.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.462.0",
     "mammoth": "^1.12.3",
     "react": "^18.3.1",
@@ -57,7 +58,8 @@
     "sonner": "^1.5.0",
     "stripe": "^22.6.2",
     "tailwind-merge": "^2.5.2",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "word-extractor": "^1.0.4"
   },
   "devDependencies": {
     "@types/node": "^22.5.5",

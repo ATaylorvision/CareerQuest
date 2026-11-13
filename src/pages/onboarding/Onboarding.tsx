@@ -243,7 +243,7 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
 
   const parseReal = async (f: File) => {
     if (f.size > 3_000_000) {
-      toast.error("That file is over 3 MB", { description: "Try a smaller PDF or Word file." });
+      toast.error("That file is over 3 MB", { description: "Try a smaller file, or save it as a PDF." });
       return;
     }
     setParsed(null);
@@ -271,8 +271,8 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
   const onFiles = (files: FileList | null) => {
     const f = files?.[0];
     if (!f) return;
-    if (!/\.(pdf|docx|txt)$/i.test(f.name)) {
-      toast.error("That file type will not work", { description: "Use a PDF, a Word .docx, or a plain text file." });
+    if (!/\.(pdf|docx?|docm|dotx|rtf|odt|html?|txt|md|png|jpe?g|webp|gif)$/i.test(f.name)) {
+      toast.error("That file type will not work", { description: "Use PDF, Word (.docx or .doc), RTF, OpenDocument (.odt), HTML, plain text, or a photo or screenshot (PNG or JPG)." });
       return;
     }
     void parseReal(f);
@@ -327,14 +327,14 @@ function StepResume({ headingRef, parsed, setParsed }: HRef & { parsed: Resume |
             <FileUp className="h-7 w-7" />
           </div>
           <div className="text-lg font-semibold">{drag ? "Drop it here" : "Drag your resume here"}</div>
-          <p className="mt-1 text-sm text-muted-foreground">PDF, Word (.docx), or plain text. Up to 3 MB.</p>
+          <p className="mt-1 text-sm text-muted-foreground">PDF, Word, RTF, ODT, HTML, text, or a PNG/JPG photo. Up to 3 MB.</p>
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
             <Button onClick={() => input.current?.click()}>Choose a file</Button>
             <Button variant="outline" onClick={() => setBuilding(true)}>
               I do not have one yet
             </Button>
           </div>
-          <input ref={input} type="file" accept=".pdf,.docx,.txt" className="sr-only" onChange={(e) => onFiles(e.target.files)} aria-label="Upload resume file" />
+          <input ref={input} type="file" accept=".pdf,.docx,.doc,.docm,.dotx,.rtf,.odt,.html,.htm,.txt,.md,.png,.jpg,.jpeg,.webp,.gif" className="sr-only" onChange={(e) => onFiles(e.target.files)} aria-label="Upload resume file" />
           <p className="mt-5 max-w-md text-xs text-muted-foreground">Your resume is read by AI and saved privately. It is never shown to an employer unless you apply.</p>
         </div>
       )}

@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import mammoth from "mammoth";
+import { detectKind, extractText, imageType } from "../_lib/resumeText.js";
 import { HttpError, admin, body, route, quota } from "../_lib/http.js";
 import { DEEP_MODEL, structured } from "../_lib/claude.js";
 
@@ -66,24 +66,30 @@ export default route(async (req, _res, user) => {
   if (!data || !fileName) throw new HttpError(400, "No file was received.");
   const buf = Buffer.from(data, "base64");
   if (buf.length === 0) throw new HttpError(400, "That file looks empty.");
-  if (buf.length > MAX_BYTES) throw new HttpError(413, "That file is over 3 MB. Try a smaller PDF or Word file.");
+  if (buf.length > MAX_BYTES) throw new HttpError(413, "That file is over 3 MB. Try a smaller file, or save it as a PDF.");
 
-  const lower = fileName.toLowerCase();
-  const isPdf = mime === "application/pdf" || lower.endsWith(".pdf");
-  const isDocx = lower.endsWith(".docx") || mime?.includes("wordprocessingml");
-  const isTxt = lower.endsWith(".txt") || mime === "text/plain";
+  const kind = detectKind(fileName, mime, buf);
+  if (!kind) {
+    throw new HttpError(415, "We could not tell what kind of file that is. Try PDF, Word (.docx or .doc), RTF, OpenDocument (.odt), HTML, plain text, or a clear photo or screenshot (PNG or JPG).");
+  }
 
   const content: Anthropic.Messages.ContentBlockParam[] = [];
-  if (isPdf) {
+  if (kind === "pdf") {
     content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data } });
-  } else if (isDocx) {
-    const { value } = await mammoth.extractRawText({ buffer: buf });
-    if (value.trim().length < 40) throw new HttpError(422, "We could not find any text in that Word file.");
-    content.push({ type: "text", text: `RESUME TEXT:\n\n${value}` });
-  } else if (isTxt) {
-    content.push({ type: "text", text: `RESUME TEXT:\n\n${buf.toString("utf8")}` });
+  } else if (kind === "image") {
+    if (buf.length > 5_000_000) throw new HttpError(413, "That image is too large to read. Try a smaller screenshot or a PDF.");
+    content.push({ type: "image", source: { type: "base64", media_type: imageType(fileName, mime, buf), data } });
   } else {
-    throw new HttpError(415, "Please upload a PDF, Word (.docx), or plain text file.");
+    let text = "";
+    try {
+      text = await extractText(kind, buf);
+    } catch (e) {
+      console.error("[resume extract]", kind, (e as Error).message);
+    }
+    if (text.trim().length < 40) {
+      throw new HttpError(422, "We could not find any text in that file. If it is a scan, upload it as a PDF or a clear photo instead.");
+    }
+    content.push({ type: "text", text: `RESUME TEXT:\n\n${text.slice(0, 60_000)}` });
   }
   content.push({ type: "text", text: "Extract this resume into the required structure." });
 
