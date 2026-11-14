@@ -24,6 +24,7 @@ interface SearchResult {
   /** Listings we found and then dropped for sitting outside the commute radius. */
   outOfRange?: number;
   note?: string;
+  sourceErrors?: string[];
   /** True when staff have switched LinkedIn search on, so a second search should run beside this one. */
   linkedin?: boolean;
 }
@@ -116,6 +117,11 @@ export async function runPipeline(opts: { onProgress: (p: Progress) => void; onJ
   );
 
   let jobs = await loadJobs();
+  // If scoring failed, still show what was found, unscored, so the person is never left with an empty page.
+  if (found.ids.length && !jobs.some((j) => found.ids.includes(j.id))) {
+    const { data } = await requireSupabase().from("jobs").select("*").in("id", found.ids);
+    jobs = [...(data ?? []).map((r) => rowToJob(r as unknown as JobRow, NO_MATCH, true)), ...jobs];
+  }
   onJobs(jobs);
 
   // LinkedIn runs after the first results are already on screen, so nobody waits on it.

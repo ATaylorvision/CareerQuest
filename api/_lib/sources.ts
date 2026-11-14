@@ -66,11 +66,11 @@ interface AdzunaResult {
 export async function adzunaSearch(
   what: string,
   where: string,
-  opts: { maxDaysOld?: number; perPage?: number; remote?: boolean; distanceMiles?: number } = {},
+  opts: { maxDaysOld?: number; perPage?: number; remote?: boolean; distanceMiles?: number; broad?: boolean } = {},
 ): Promise<RawJob[]> {
   const id = process.env.ADZUNA_APP_ID;
   const key = process.env.ADZUNA_APP_KEY;
-  if (!id || !key) return [];
+  if (!id || !key) throw new Error("Adzuna keys are not set");
   const q = new URLSearchParams({
     app_id: id,
     app_key: key,
@@ -81,7 +81,9 @@ export async function adzunaSearch(
     max_days_old: String(opts.maxDaysOld ?? 30),
     "content-type": "application/json",
   });
-  q.delete("what");
+  // A broad search looks for the words anywhere in the listing, not just the title.
+  if (opts.broad) q.delete("title_only");
+  else q.delete("what");
   if (where && !/^remote/i.test(where)) {
     q.set("where", where);
     // Adzuna filters by radius on its side. This is the search that keeps a

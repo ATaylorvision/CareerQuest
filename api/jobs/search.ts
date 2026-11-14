@@ -46,8 +46,16 @@ function namesOneOf(location: string, anchors: string[]): boolean {
 /** A listing plus whether the board already filtered it to a commute radius. */
 type Found = RawJob & { scoped: boolean };
 
-const tag = (p: Promise<RawJob[]>, scoped: boolean): Promise<Found[]> =>
-  p.then((rows) => rows.map((r) => ({ ...r, scoped }))).catch((): Found[] => []);
+const tag = (p: Promise<RawJob[]>, scoped: boolean, diag?: string[]): Promise<Found[]> =>
+  p
+    .then((rows) => rows.map((r) => ({ ...r, scoped })))
+    .catch((e: unknown): Found[] => {
+      // A board that fails must not look the same as a board with nothing to show.
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[jobs source]", msg);
+      diag?.push(msg);
+      return [];
+    });
 
 export default route(async (req, _res, user) => {
   const { extraQuery, action, runId, q, lat, lng } = body<{ extraQuery?: string; action?: string; runId?: string; q?: string; lat?: number; lng?: number }>(req);
@@ -66,16 +74,24 @@ export default route(async (req, _res, user) => {
   if (!polling && action !== "linkedinStart") await quota(user, "search", 15, "job searches");
   const db = admin();
 
-  const { data: profile } = await db
+  const diag: string[] = [];
+  let { data: profile, error: profileErr } = await db
     .from("profiles")
     .select("location, target_roles, locations, remote_pref, salary_floor, max_distance_miles, home_lat, home_lng, home_geocoded_for, anchors")
     .eq("id", user.id)
     .single();
+  if (profileErr) {
+    // Most likely the newest database columns are missing. Search still works without them, so read the older ones.
+    console.error("[jobs profile]", profileErr.message);
+    diag.push(`profile: ${profileErr.message}`);
+    const older = await db.from("profiles").select("location, target_roles, locations, remote_pref, salary_floor, max_distance_miles").eq("id", user.id).single();
+    profile = older.data as typeof profile;
+  }
 
   const roles = (profile?.target_roles?.length ? profile.target_roles : ["operations manager"]).slice(0, 3);
   const remotePref: string = profile?.remote_pref ?? "any";
-  const radius = Math.max(5, Math.min(ANY_DISTANCE, profile?.max_distance_miles ?? 30));
-  const anyDistance = radius >= ANY_DISTANCE;
+  let radius = Math.max(5, Math.min(ANY_DISTANCE, profile?.max_distance_miles ?? 30));
+  let anyDistance = radius >= ANY_DISTANCE;
 
   // Where the person actually lives comes first. The extra locations are the
   // other places they said they would also work, not a replacement for home.
@@ -174,22 +190,23 @@ export default route(async (req, _res, user) => {
 
   // 1. Pull real listings, each one scoped to a place the person named.
   const searchRemote = remoteOnly || listedRemote || (openToRemote && areas.length === 0);
-  const queries: Promise<Found[]>[] = [];
-  if (!polling) {
+  const gather = async (broad: boolean, dist: number): Promise<Found[]> => {
+    const queries: Promise<Found[]>[] = [];
     for (const role of roles) {
-      if (!remoteOnly) for (const loc of areas) queries.push(tag(adzunaSearch(role, loc, { distanceMiles: radius }), true));
-      if (searchRemote) queries.push(tag(adzunaSearch(role, "", { remote: true }), false));
+      if (!remoteOnly) for (const loc of areas) queries.push(tag(adzunaSearch(role, loc, { distanceMiles: dist, broad }), true, diag));
+      if (searchRemote) queries.push(tag(adzunaSearch(role, "", { remote: true, broad }), false, diag));
     }
     if (extraQuery) {
-      if (areas.length && !remoteOnly) queries.push(tag(adzunaSearch(extraQuery, areas[0], { distanceMiles: radius }), true));
-      else queries.push(tag(adzunaSearch(extraQuery, "", { remote: searchRemote }), false));
+      if (areas.length && !remoteOnly) queries.push(tag(adzunaSearch(extraQuery, areas[0], { distanceMiles: dist, broad }), true, diag));
+      else queries.push(tag(adzunaSearch(extraQuery, "", { remote: searchRemote, broad }), false, diag));
     }
-    queries.push(tag(jsearchSearch(`${roles[0]} in ${areas[0] || "United States"}`), false));
-  }
-  const raw = linkedinRaw ?? (await Promise.all(queries)).flat();
+    queries.push(tag(jsearchSearch(`${roles[0]} in ${areas[0] || "United States"}`), false, diag));
+    return (await Promise.all(queries)).flat();
+  };
+  let raw: Found[] = linkedinRaw ?? (polling ? [] : await gather(false, radius));
 
   // The job boards send no coordinates, so place each listing from its city and state.
-  {
+  const placeAll = async (raw: Found[]): Promise<void> => {
     const need = new Map<string, { city: string; st: string }>();
     for (const r of raw) {
       if (r.latitude != null || !r.state || remoteType(r) === "remote") continue;
@@ -215,7 +232,8 @@ export default route(async (req, _res, user) => {
         }
       }
     }
-  }
+  };
+  await placeAll(raw);
 
   /** How far a listing sits from the nearest place the person named, when both ends have coordinates. */
   const milesFromHome = (r: Found): number | null =>
@@ -243,28 +261,82 @@ export default route(async (req, _res, user) => {
       if (j) seen.add(`${norm(j.company)}|${norm(j.title)}`);
     }
   }
-  const list: Found[] = [];
+  let list: Found[] = [];
   let outOfRange = 0;
-  for (const r of raw.sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? ""))) {
-    const k1 = `${r.source}:${r.external_id}`;
-    const k2 = `${norm(r.company)}|${norm(r.title)}`;
-    if (!r.title || !r.apply_url || seen.has(k1) || seen.has(k2)) continue;
-    if (/\b(intern|internship|co-?op|apprentice(ship)?)\b/i.test(r.title)) continue;
-    if (!reachable(r)) {
-      outOfRange++;
-      continue;
+  let widenedNote = "";
+  const choose = (rows: Found[]) => {
+    list = [];
+    outOfRange = 0;
+    for (const r of rows.sort((x, y) => (y.posted_at ?? "").localeCompare(x.posted_at ?? ""))) {
+      const k1 = `${r.source}:${r.external_id}`;
+      const k2 = `${norm(r.company)}|${norm(r.title)}`;
+      if (!r.title || !r.apply_url || seen.has(k1) || seen.has(k2)) continue;
+      if (/\b(intern|internship|co-?op|apprentice(ship)?)\b/i.test(r.title)) continue;
+      if (!reachable(r)) {
+        outOfRange++;
+        continue;
+      }
+      seen.add(k1);
+      seen.add(k2);
+      list.push(r);
     }
-    seen.add(k1);
-    seen.add(k2);
-    list.push(r);
+  };
+  choose(raw);
+
+  // A search should not come back empty while listings exist. Try again, a little looser each time, and say so.
+  if (list.length === 0 && !polling) {
+    const asked = radius;
+    if (!anyDistance && !remoteOnly && outOfRange > 0) {
+      radius = Math.min(ANY_DISTANCE, Math.max(asked * 2, 50));
+      anyDistance = radius >= ANY_DISTANCE;
+      seen.clear();
+      choose(raw);
+      if (list.length) widenedNote = `Nothing sat within ${asked} miles, so we looked out to ${radius}. You can change this in Settings.`;
+    }
+    if (list.length === 0) {
+      raw = await gather(true, radius);
+      await placeAll(raw);
+      seen.clear();
+      choose(raw);
+      if (list.length) widenedNote = widenedNote || "Your exact role title had no listings, so these are close matches.";
+    }
   }
+
+  // Last resort: listings other people's searches already saved, if they suit this person.
+  if (list.length === 0 && !polling) {
+    const words: string[] = [...new Set((roles as string[]).flatMap((r) => norm(r).split(" ")))].filter((w) => w.length > 3);
+    const { data: cached } = await db
+      .from("jobs")
+      .select("id, title, company, location, remote_type, latitude, longitude")
+      .is("owner_id", null)
+      .gte("last_seen_at", new Date(Date.now() - 60 * DAY).toISOString())
+      .order("first_seen_at", { ascending: false })
+      .limit(400);
+    const near = (cached ?? []).filter((j) => {
+      const t = norm(j.title as string);
+      if (words.length && !words.some((w: string) => t.includes(w))) return false;
+      if (j.remote_type === "remote") return openToRemote;
+      if (remoteOnly) return false;
+      if (anyDistance) return true;
+      if (anchors.length && j.latitude != null && j.longitude != null) return Math.min(...anchors.map((a) => haversineMiles(a, { lat: j.latitude as number, lng: j.longitude as number }))) <= radius;
+      return namesOneOf((j.location as string) ?? "", areas);
+    });
+    if (near.length) {
+      const ids = near.slice(0, MAX_JOBS).map((j) => j.id as string);
+      return { ids, total: ids.length, verified: 0, agencies: 0, ghostRisk: 0, outOfRange, status: "done", note: "The job boards are not answering right now, so these are recent listings we already had on file.", sourceErrors: diag };
+    }
+  }
+
   const picked = list.slice(0, MAX_JOBS);
   if (picked.length === 0) {
-    const note = outOfRange
-      ? `Every listing we found sits outside your ${radius} mile range${home ? ` from ${home}` : ""}. Widen the range in Settings, or add remote.`
-      : "No listings came back. Try a broader role title or location.";
+    const down = diag.length > 0;
+    const note = down
+      ? "The job boards did not answer this time. Nothing is wrong with your profile. Please try again in a few minutes."
+      : outOfRange
+        ? `Every listing we found sits outside your ${radius} mile range${home ? ` from ${home}` : ""}. Widen the range in Settings, or add remote.`
+        : "No listings came back. Try a broader role title or location.";
     await settle([]);
-    return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange, note, ...(polling ? { status: "done" } : {}) };
+    return { ids: [], total: 0, verified: 0, agencies: 0, ghostRisk: 0, outOfRange, note, sourceErrors: diag, ...(polling ? { status: "done" } : {}) };
   }
 
   // 3. What we already know about these listings.
@@ -357,6 +429,8 @@ export default route(async (req, _res, user) => {
     agencies: rows.filter((r) => !r.employer_posted).length,
     ghostRisk: rows.filter((r) => r.legit.badge === "ghost").length,
     outOfRange,
+    ...(widenedNote ? { note: widenedNote } : {}),
+    sourceErrors: diag,
     // Tells the browser whether to start the LinkedIn search that runs beside this one.
     ...(polling ? { status: "done" } : { linkedin: linkedinOn }),
   };
